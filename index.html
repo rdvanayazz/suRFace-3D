@@ -90,7 +90,7 @@ input,select{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-
 
 <div class="section-title">2. Filament Tüketimi (Ürün Başına)</div>
 <div class="group-box">
-    <p class="small" style="margin: 0 0 5px 0; color: #888;">Standart filament sınırsızdır. Ek renkler için 'Stok' sekmesini kullanabilirsiniz.</p>
+    <p class="small" style="margin: 0 0 5px 0; color: #888;">Standart filament sınırsızdır. Fiyatını ve ek renkleri 'Stok' sekmesinden yönetebilirsiniz.</p>
     <div id="filament-container"></div>
     <button type="button" onclick="addFilamentRow()" style="background:#17a2b8; color:#fff; padding:4px; font-size:12px; margin-top:5px; width:auto;">+ Filament Ekle</button>
 </div>
@@ -264,8 +264,16 @@ input,select{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-
 
 <div id="stock_sec" class="card" style="display:none">
 <h3>Filament Stok Yönetimi</h3>
+
+<!-- EKLEME: Canlı Değiştirilebilir Standart Fiyat Ayar Kutusu -->
+<div class="group-box" style="background: #eef7ff; border: 1px solid #b8daff;">
+    <span class="sub-label" style="color: #004085;">🔒 Standart Filament Kg Fiyatı (₺)</span>
+    <input id="canliStandartFiyat" type="number" oninput="standartFiyatGuncelle()" style="border-color: #b8daff; font-weight: bold; color: #004085;">
+    <p class="small" style="margin: 3px 0 0 0; color: #004085;">Buradan girdiğiniz fiyat anında tüm hesaplama ekranına yansır ve telefona kaydedilir.</p>
+</div>
+
 <div class="filament-row">
-    <span class="sub-label">Filament Rengi / Adı</span>
+    <span class="sub-label">Yeni Filament Rengi / Adı</span>
     <input id="stokRenk" placeholder="Örn: PLA Kırmızı">
     <div class="flex-row" style="margin-top: 5px;">
         <div style="flex: 1;">
@@ -284,11 +292,10 @@ input,select{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-
 
 <script>
 // --- GLOBAL DEĞİŞKENLER VE LOCALSTORAGE ---
-// İstediğiniz zaman değiştirebileceğiniz standart filament fiyatı buradadır:
-const STANDART_FILAMENT_FIYAT = 1000; 
-
 let stock = JSON.parse(localStorage.getItem('l3d_stock')) || [];
 let orders = JSON.parse(localStorage.getItem('l3d_orders')) || [];
+let kayitliStandartFiyat = localStorage.getItem('l3d_standart_fiyat') ? parseFloat(localStorage.getItem('l3d_standart_fiyat')) : 1000;
+
 let sonHesap = null;
 let faturayaEklenenSiparisler = [];
 
@@ -297,8 +304,15 @@ const standartFilament = {
     id: "standart-suresiz",
     renk: "Standart Filament (Sınırsız)",
     gram: Infinity,
-    fiyat: STANDART_FILAMENT_FIYAT
+    fiyat: kayitliStandartFiyat
 };
+
+// Canlı fiyat değiştiğinde tetiklenecek fonksiyon
+function standartFiyatGuncelle() {
+    const yeniFiyat = parseFloat(document.getElementById('canliStandartFiyat').value) || 0;
+    standartFilament.fiyat = yeniFiyat;
+    localStorage.setItem('l3d_standart_fiyat', yeniFiyat);
+}
 
 // --- 5 VE 10'UN KATLARINA ÜST YUVARLAMA FONKSİYONU ---
 function yuvarlaBesKatina(rakam) {
@@ -402,7 +416,7 @@ function renderStock() {
     const list = document.getElementById('stock-list');
     
     let htmlContent = `
-        <div class="item flex-row" style="justify-content:space-between; font-size:13px; background: #eef7ff; padding: 6px; border-radius: 4px;">
+        <div class="item flex-row" style="justify-content:space-between; font-size:13px; background: #eef7ff; padding: 6px; border-radius: 4px; margin-top: 8px;">
             <div><b>${standartFilament.renk}</b> - Sınırsız - ${standartFilament.fiyat} ₺/Kg</div>
             <div style="font-size: 11px; color: #007bff; font-weight: bold; font-style: italic;">Sistem Kilidi 🔒</div>
         </div>
@@ -427,7 +441,6 @@ function addFilamentRow() {
     const container = document.getElementById('filament-container');
     const rowId = Date.now();
     
-    // Standart seçeneğin her zaman "selected" (seçili) olarak gelmesini sağladık
     let options = `<option value="${standartFilament.id}" selected>${standartFilament.renk}</option>`;
     options += stock.map(s => `<option value="${s.id}">${s.renk} (${s.gram}g)</option>`).join('');
     
@@ -947,6 +960,9 @@ function editStok(id){
 }
 
 window.onload = function() {
+    // EKLEME: Açılışta input kutusuna mevcut kayıtlı fiyatı basıyoruz
+    document.getElementById('canliStandartFiyat').value = standartFilament.fiyat;
+    
     addFilamentRow();
     renderStock();
     updateOrderSelectOptions();
