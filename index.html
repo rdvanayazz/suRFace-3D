@@ -265,7 +265,6 @@ input,select{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-
 <div id="stock_sec" class="card" style="display:none">
 <h3>Filament Stok Yönetimi</h3>
 
-<!-- EKLEME: Canlı Değiştirilebilir Standart Fiyat Ayar Kutusu -->
 <div class="group-box" style="background: #eef7ff; border: 1px solid #b8daff;">
     <span class="sub-label" style="color: #004085;">🔒 Standart Filament Kg Fiyatı (₺)</span>
     <input id="canliStandartFiyat" type="number" oninput="standartFiyatGuncelle()" style="border-color: #b8daff; font-weight: bold; color: #004085;">
@@ -307,7 +306,6 @@ const standartFilament = {
     fiyat: kayitliStandartFiyat
 };
 
-// Canlı fiyat değiştiğinde tetiklenecek fonksiyon
 function standartFiyatGuncelle() {
     const yeniFiyat = parseFloat(document.getElementById('canliStandartFiyat').value) || 0;
     standartFilament.fiyat = yeniFiyat;
@@ -510,16 +508,25 @@ function hesapla(forceRecalc = false) {
         
         if (!fStok) continue;
 
-        const tekGramFireli = tekGram * (1 + (fireOrani / 100));
+        // Malzeme maliyeti ve Fire maliyeti alt alta iki ayrı kaleme ayrıştırılıyor
         const gramMaliyeti = fStok.fiyat / 1000;
-        const satirMaliyetiTek = tekGramFireli * gramMaliyeti;
+        const safMaliyetTek = tekGram * gramMaliyeti;
+        const fireGramTek = tekGram * (fireOrani / 100);
+        const fireMaliyetiTek = fireGramTek * gramMaliyeti;
+        
+        const satirMaliyetiTek = safMaliyetTek + fireMaliyetiTek;
         toplamFilamentMaliyetiTek += satirMaliyetiTek;
 
         filamentTabloSatirlari += `
             <tr>
-                <td>Malzeme: ${fStok.renk} (Net: ${tekGram}g + %${fireOrani} Fire)</td>
-                <td>${satirMaliyetiTek.toFixed(2)} ₺</td>
-                <td>${(satirMaliyetiTek * adet).toFixed(2)} ₺</td>
+                <td>Malzeme Net Tüketim: ${fStok.renk} (${tekGram}g)</td>
+                <td>${safMaliyetTek.toFixed(2)} ₺</td>
+                <td>${(safMaliyetTek * adet).toFixed(2)} ₺</td>
+            </tr>
+            <tr style="color: #bc6c25; font-style: italic;">
+                <td>└ %${fireOrani} Fire Payı (${fireGramTek.toFixed(1)}g)</td>
+                <td>${fireMaliyetiTek.toFixed(2)} ₺</td>
+                <td>${(fireMaliyetiTek * adet).toFixed(2)} ₺</td>
             </tr>
         `;
 
@@ -527,7 +534,7 @@ function hesapla(forceRecalc = false) {
             stockId: stockId,
             renk: fStok.renk,
             tekGram: tekGram,
-            toplamGram: tekGramFireli * adet
+            toplamGram: (tekGram + fireGramTek) * adet
         });
     }
 
@@ -647,11 +654,11 @@ function hesapla(forceRecalc = false) {
 
 // --- SİPARİŞ KAYDET & STOKTAN DÜŞÜŞ ---
 function saveOrder() {
-    const hesap = sonHesap || hesapla();
-    if (!hesap) return;
+    const jsonHesap = sonHesap || hesapla();
+    if (!jsonHesap) return;
 
     let filamentTalepleri = {};
-    for (let f of hesap.secilenFilamentler) {
+    for (let f of jsonHesap.secilenFilamentler) {
         if (f.stockId === standartFilament.id) continue;
         filamentTalepleri[f.stockId] = (filamentTalepleri[f.stockId] || 0) + f.toplamGram;
     }
@@ -671,11 +678,11 @@ function saveOrder() {
     orders.push({
         id: Date.now(),
         tarih: new Date().toLocaleString('tr-TR'),
-        urunAdi: hesap.urunAdi,
-        adet: hesap.adet,
-        fiyat: hesap.toplamSatisKdvHaric,
-        sureSaat: hesap.sureSaat || 0,
-        sureDakika: hesap.sureDakika || 0
+        urunAdi: jsonHesap.urunAdi,
+        adet: jsonHesap.adet,
+        fiyat: jsonHesap.toplamSatisKdvHaric,
+        sureSaat: jsonHesap.sureSaat || 0,
+        sureDakika: jsonHesap.sureDakika || 0
     });
     localStorage.setItem('l3d_orders', JSON.stringify(orders));
 
@@ -716,16 +723,16 @@ function updateOrderSelectOptions() {
 function faturayaSiparisEkle() {
     const val = document.getElementById('tekSiparisSec').value;
     if(val === "aktif") {
-        const hesap = sonHesap || hesapla();
-        if(!hesap) return alert("Aktif hesaplama verisi bulunamadı!");
+        const jsonHesap = sonHesap || hesapla();
+        if(!jsonHesap) return alert("Aktif hesaplama verisi bulunamadı!");
         
         faturayaEklenenSiparisler.push({
             id: "aktif-" + Date.now(),
-            urunAdi: hesap.urunAdi,
-            adet: hesap.adet,
-            fiyat: hesap.toplamSatisKdvHaric,
-            sureSaat: hesap.sureSaat || 0,
-            sureDakika: hesap.sureDakika || 0
+            urunAdi: jsonHesap.urunAdi,
+            adet: jsonHesap.adet,
+            fiyat: jsonHesap.toplamSatisKdvHaric,
+            sureSaat: jsonHesap.sureSaat || 0,
+            sureDakika: jsonHesap.sureDakika || 0
         });
     } else {
         const secilenSiparis = orders.find(o => o.id.toString() === val.toString());
@@ -771,15 +778,15 @@ function gorselFaturaListesiGuncelle() {
 
 function teklifOlustur() {
     if (faturayaEklenenSiparisler.length === 0) {
-        const hesap = sonHesap || hesapla();
-        if (!hesap) return alert("Faturaya hiç sipariş eklemediniz veya aktif bir hesaplama yapmadınız.");
+        const jsonHesap = sonHesap || hesapla();
+        if (!jsonHesap) return alert("Faturaya hiç sipariş eklemediniz veya aktif bir hesaplama yapmadınız.");
         faturayaEklenenSiparisler.push({
             id: "aktif-oto",
-            urunAdi: hesap.urunAdi,
-            adet: hesap.adet,
-            fiyat: hesap.toplamSatisKdvHaric,
-            sureSaat: hesap.sureSaat || 0,
-            sureDakika: hesap.sureDakika || 0
+            urunAdi: jsonHesap.urunAdi,
+            adet: jsonHesap.adet,
+            fiyat: jsonHesap.toplamSatisKdvHaric,
+            sureSaat: jsonHesap.sureSaat || 0,
+            sureDakika: jsonHesap.sureDakika || 0
         });
         gorselFaturaListesiGuncelle();
     }
@@ -960,9 +967,7 @@ function editStok(id){
 }
 
 window.onload = function() {
-    // EKLEME: Açılışta input kutusuna mevcut kayıtlı fiyatı basıyoruz
     document.getElementById('canliStandartFiyat').value = standartFilament.fiyat;
-    
     addFilamentRow();
     renderStock();
     updateOrderSelectOptions();
