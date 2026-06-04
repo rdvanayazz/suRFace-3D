@@ -485,9 +485,10 @@ function hesapla(forceRecalc = false) {
     const giderTutari = parseFloat(document.getElementById('gider_tutari').value) || 0;
     const kargo = parseFloat(document.getElementById('kargo').value) || 0;
     const karOrani = parseFloat(document.getElementById('kar_orani').value) || 0;
-    let toplamFilamentMaliyetiTek = 0;
+    
     let filamentTabloSatirlari = "";
     let secilenFilamentler = [];
+    let toplamUretimMaliyetiYuv = 0;
 
     const rows = document.querySelectorAll('#filament-container .filament-row');
     if(rows.length === 0) {
@@ -508,25 +509,41 @@ function hesapla(forceRecalc = false) {
         
         if (!fStok) continue;
 
-        // Malzeme maliyeti ve Fire maliyeti alt alta iki ayrı kaleme ayrıştırılıyor
         const gramMaliyeti = fStok.fiyat / 1000;
-        const safMaliyetTek = tekGram * gramMaliyeti;
-        const fireGramTek = tekGram * (fireOrani / 100);
-        const fireMaliyetiTek = fireGramTek * gramMaliyeti;
         
-        const satirMaliyetiTek = safMaliyetTek + fireMaliyetiTek;
-        toplamFilamentMaliyetiTek += satirMaliyetiTek;
+        // 1. MALZEME NET GİDERİ HESABI VE YUVARLAMASI
+        const safMaliyetTekHam = tekGram * gramMaliyeti;
+        const safMaliyetTekYuv = yuvarlaBesKatina(safMaliyetTekHam);
+        const safMaliyetFarkTek = safMaliyetTekYuv - safMaliyetTekHam;
+        
+        // 2. FİRE PAYI GİDERİ HESABI VE YUVARLAMASI
+        const fireGramTek = tekGram * (fireOrani / 100);
+        const fireMaliyetiTekHam = fireGramTek * gramMaliyeti;
+        const fireMaliyetiTekYuv = yuvarlaBesKatina(fireMaliyetiTekHam);
+        const fireMaliyetiFarkTek = fireMaliyetiTekYuv - fireMaliyetiTekHam;
+        
+        toplamUretimMaliyetiYuv += (safMaliyetTekYuv + fireMaliyetiTekYuv);
 
         filamentTabloSatirlari += `
-            <tr>
+            <tr style="font-weight: bold; background: #fafafa;">
                 <td>Malzeme Net Tüketim: ${fStok.renk} (${tekGram}g)</td>
-                <td>${safMaliyetTek.toFixed(2)} ₺</td>
-                <td>${(safMaliyetTek * adet).toFixed(2)} ₺</td>
+                <td>${safMaliyetTekYuv} ₺</td>
+                <td>${safMaliyetTekYuv * adet} ₺</td>
             </tr>
-            <tr style="color: #bc6c25; font-style: italic;">
+            <tr style="color: #6c757d; font-style: italic;">
+                <td>└ Ham Hesaplanan / Üst Fark</td>
+                <td>${safMaliyetTekHam.toFixed(2)} ₺ / +${safMaliyetFarkTek.toFixed(2)} ₺</td>
+                <td>${(safMaliyetTekHam * adet).toFixed(2)} ₺ / +${(safMaliyetFarkTek * adet).toFixed(2)} ₺</td>
+            </tr>
+            <tr style="font-weight: bold; background: #fafafa; color: #bc6c25;">
                 <td>└ %${fireOrani} Fire Payı (${fireGramTek.toFixed(1)}g)</td>
-                <td>${fireMaliyetiTek.toFixed(2)} ₺</td>
-                <td>${(fireMaliyetiTek * adet).toFixed(2)} ₺</td>
+                <td>${fireMaliyetiTekYuv} ₺</td>
+                <td>${fireMaliyetiTekYuv * adet} ₺</td>
+            </tr>
+            <tr style="color: #6c757d; font-style: italic;">
+                <td>└ Ham Hesaplanan / Üst Fark</td>
+                <td>${fireMaliyetiTekHam.toFixed(2)} ₺ / +${fireMaliyetiFarkTek.toFixed(2)} ₺</td>
+                <td>${(fireMaliyetiTekHam * adet).toFixed(2)} ₺ / +${(fireMaliyetiFarkTek * adet).toFixed(2)} ₺</td>
             </tr>
         `;
 
@@ -538,14 +555,30 @@ function hesapla(forceRecalc = false) {
         });
     }
 
-    const elektrikMaliyetiTek = (watt / 1000) * toplamSaat * elektrikBirim;
-    const amortismanMaliyetiTek = toplamSaat * amortismanBirim;
-    const netMaliyetTekHam = toplamFilamentMaliyetiTek + elektrikMaliyetiTek + amortismanMaliyetiTek + giderTutari;
-    const yuvarlanmisNetMaliyetTek = yuvarlaBesKatina(netMaliyetTekHam);
-    const yuvarlanmaFarkiTek = yuvarlanmisNetMaliyetTek - netMaliyetTekHam;
+    // 3. ELEKTRİK GİDERİ HESABI VE YUVARLAMASI
+    const elektrikMaliyetiTekHam = (watt / 1000) * toplamSaat * elektrikBirim;
+    const elektrikMaliyetiTekYuv = yuvarlaBesKatina(elektrikMaliyetiTekHam);
+    const elektrikFarkTek = elektrikMaliyetiTekYuv - elektrikMaliyetiTekHam;
+
+    // 4. AMORTİSMAN GİDERİ HESABI VE YUVARLAMASI
+    const amortismanMaliyetiTekHam = toplamSaat * amortismanBirim;
+    const amortismanMaliyetiTekYuv = yuvarlaBesKatina(amortismanMaliyetiTekHam);
+    const amortismanFarkTek = amortismanMaliyetiTekYuv - amortismanMaliyetiTekHam;
+
+    // 5. İŞÇİLİK / EKSTRA GİDER HESABI VE YUVARLAMASI
+    const giderTutariTekHam = giderTutari;
+    const giderTutariTekYuv = yuvarlaBesKatina(giderTutariTekHam);
+    const giderFarkTek = giderTutariTekYuv - giderTutariTekHam;
+
+    // Toplam üretim maliyetine diğer yuvarlanmış kalemleri de ekliyoruz
+    toplamUretimMaliyetiYuv += (elektrikMaliyetiTekYuv + amortismanMaliyetiTekYuv + giderTutariTekYuv);
     
+    // Kargo Hariç Üretim Maliyetleri
+    const yuvarlanmisNetMaliyetTek = toplamUretimMaliyetiYuv;
     const yuvarlanmisToplamUretimMaliyeti = yuvarlanmisNetMaliyetTek * adet;
-    const genelMaliyetKargoDahil = yuvarlanmisToplamUretimMaliyeti + kargo;
+    
+    // Genel kargo dahil maliyet
+    const genelMaliyetKargoDahilYuv = yuvarlanmisToplamUretimMaliyeti + kargo;
 
     const kontrolKutusu = document.getElementById('manuelFiyatKontrol');
     let yuvarlanmisBirimSatis = 0;
@@ -566,13 +599,14 @@ function hesapla(forceRecalc = false) {
         sureDakika: inputDakika,
         netMaliyetTek: yuvarlanmisNetMaliyetTek,
         toplamUretimMaliyeti: yuvarlanmisToplamUretimMaliyeti,
-        genelMaliyetKargoDahil: yuvarlaBesKatina(genelMaliyetKargoDahil),
+        genelMaliyetKargoDahil: yuvarlaBesKatina(genelMaliyetKargoDahilYuv),
         karliBirimFiyatKdvHaric: yuvarlanmisBirimSatis,
         toplamSatisKdvHaric: yuvarlanmisToplamSatisKdvHaric
     };
+
     document.getElementById('res').innerHTML = `
         <div style="border-top:1px solid #ccc; padding-top:8px; margin-top:10px; font-weight:normal;">
-            <h4 style="margin: 6px 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu</h4>
+            <h4 style="margin: 6px 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Tüm Kalemler Yuvarlanmış)</h4>
             <table class="maliyet-tablo">
                 <thead>
                     <tr>
@@ -583,35 +617,44 @@ function hesapla(forceRecalc = false) {
                 </thead>
                 <tbody>
                     ${filamentTabloSatirlari}
-                    <tr>
+                    
+                    <tr style="font-weight: bold; background: #fafafa;">
                         <td>Elektrik (${inputSaat}sa ${inputDakika}dk / ${watt}W)</td>
-                        <td>${elektrikMaliyetiTek.toFixed(2)} ₺</td>
-                        <td>${(elektrikMaliyetiTek * adet).toFixed(2)} ₺</td>
-                    </tr>
-                    <tr>
-                        <td>Yazıcı Amortisman Payı</td>
-                        <td>${amortismanMaliyetiTek.toFixed(2)} ₺</td>
-                        <td>${(amortismanMaliyetiTek * adet).toFixed(2)} ₺</td>
-                    </tr>
-                    <tr>
-                        <td>${giderTuru}</td>
-                        <td>${giderTutari.toFixed(2)} ₺</td>
-                        <td>${(giderTutari * adet).toFixed(2)} ₺</td>
-                    </tr>
-                    <tr class="toplam-satir" style="background: #e9ecef;">
-                        <td>Net Üretim Gideri (Yuvarlanmış)</td>
-                        <td>${yuvarlanmisNetMaliyetTek} ₺</td>
-                        <td>${yuvarlanmisToplamUretimMaliyeti} ₺</td>
+                        <td>${elektrikMaliyetiTekYuv} ₺</td>
+                        <td>${elektrikMaliyetiTekYuv * adet} ₺</td>
                     </tr>
                     <tr style="color: #6c757d; font-style: italic;">
-                        <td>└ Ham Hesaplanan Net Tutar</td>
-                        <td>${netMaliyetTekHam.toFixed(2)} ₺</td>
-                        <td>${(netMaliyetTekHam * adet).toFixed(2)} ₺</td>
+                        <td>└ Ham Hesaplanan / Üst Fark</td>
+                        <td>${elektrikMaliyetiTekHam.toFixed(2)} ₺ / +${elektrikFarkTek.toFixed(2)} ₺</td>
+                        <td>${(elektrikMaliyetiTekHam * adet).toFixed(2)} ₺ / +${(elektrikFarkTek * adet).toFixed(2)} ₺</td>
                     </tr>
-                    <tr style="color: #28a745; font-style: italic;">
-                        <td>└ Üst Yuvarlama Farkı</td>
-                        <td>+${yuvarlanmaFarkiTek.toFixed(2)} ₺</td>
-                        <td>+${(yuvarlanmaFarkiTek * adet).toFixed(2)} ₺</td>
+
+                    <tr style="font-weight: bold; background: #fafafa;">
+                        <td>Yazıcı Amortisman Payı</td>
+                        <td>${amortismanMaliyetiTekYuv} ₺</td>
+                        <td>${amortismanMaliyetiTekYuv * adet} ₺</td>
+                    </tr>
+                    <tr style="color: #6c757d; font-style: italic;">
+                        <td>└ Ham Hesaplanan / Üst Fark</td>
+                        <td>${amortismanMaliyetiTekHam.toFixed(2)} ₺ / +${amortismanFarkTek.toFixed(2)} ₺</td>
+                        <td>${(amortismanMaliyetiTekHam * adet).toFixed(2)} ₺ / +${(amortismanFarkTek * adet).toFixed(2)} ₺</td>
+                    </tr>
+
+                    <tr style="font-weight: bold; background: #fafafa;">
+                        <td>${giderTuru}</td>
+                        <td>${giderTutariTekYuv} ₺</td>
+                        <td>${giderTutariTekYuv * adet} ₺</td>
+                    </tr>
+                    <tr style="color: #6c757d; font-style: italic;">
+                        <td>└ Ham Hesaplanan / Üst Fark</td>
+                        <td>${giderTutariTekHam.toFixed(2)} ₺ / +${giderFarkTek.toFixed(2)} ₺</td>
+                        <td>${(giderTutariTekHam * adet).toFixed(2)} ₺ / +${(giderFarkTek * adet).toFixed(2)} ₺</td>
+                    </tr>
+
+                    <tr class="toplam-satir" style="background: #e9ecef;">
+                        <td>Net Üretim Gideri (Toplam Yuvarlanmış)</td>
+                        <td>${yuvarlanmisNetMaliyetTek} ₺</td>
+                        <td>${yuvarlanmisToplamUretimMaliyeti} ₺</td>
                     </tr>
                     <tr>
                         <td>Kargo Ücreti</td>
@@ -620,8 +663,8 @@ function hesapla(forceRecalc = false) {
                     </tr>
                     <tr class="toplam-satir" style="background:#d1ecf1; color:#0c5460;">
                         <td>Kargo Dahil Genel Maliyet</td>
-                        <td>${yuvarlaBesKatina(genelMaliyetKargoDahil / adet)} ₺</td>
-                        <td>${yuvarlaBesKatina(genelMaliyetKargoDahil)} ₺</td>
+                        <td>${yuvarlaBesKatina(genelMaliyetKargoDahilYuv / adet)} ₺</td>
+                        <td>${yuvarlaBesKatina(genelMaliyetKargoDahilYuv)} ₺</td>
                     </tr>
                 </tbody>
             </table>
@@ -753,6 +796,7 @@ function faturayaSiparisEkle() {
     gorselFaturaListesiGuncelle();
 }
 
+// --- FATURADAN SİPARİŞ ÇIKAR ---
 function faturadanSiparisCikar(id) {
     faturayaEklenenSiparisler = faturayaEklenenSiparisler.filter(item => item.id.toString() !== id.toString());
     gorselFaturaListesiGuncelle();
