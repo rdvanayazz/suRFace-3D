@@ -643,9 +643,12 @@ function hesapla(forceRecalc = false) {
     };
     document.getElementById('res').innerHTML = `
         <div style="border-top:1px solid #ccc; padding-top:8px; margin-top:10px; font-weight:normal;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin: 6px 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin: 6px 0; gap:8px; flex-wrap:wrap;">
                 <h4 style="margin: 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Tüm Kalemler Yuvarlanmış)</h4>
-                <button onclick="indirMaliyetPDF()" style="width:auto; background:#17a2b8; color:#fff; font-size:12px; padding:4px 8px;">📊 Raporu İndir</button>
+                <div class="flex-row" style="gap:4px;">
+                    <input id="maliyetMusteriAdi" placeholder="Müşteri Adı (Opsiyonel)" style="max-width:140px; padding:3px 6px; margin:0; font-size:11px;">
+                    <button onclick="indirMaliyetPDF()" style="width:auto; background:#17a2b8; color:#fff; font-size:12px; padding:4px 8px; margin:0;">📊 Raporu İndir</button>
+                </div>
             </div>
             <table class="maliyet-tablo">
                 <thead>
@@ -740,6 +743,9 @@ function indirMaliyetPDF() {
     const data = sonHesap || hesapla();
     if (!data) return;
 
+    const mInput = document.getElementById('maliyetMusteriAdi');
+    const musteriAdi = mInput ? mInput.value.trim() : "";
+
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
@@ -749,12 +755,22 @@ function indirMaliyetPDF() {
 
     doc.setFontSize(11);
     doc.setFont("Helvetica", "normal");
-    doc.text(baskanKarakterDuzelt(`Urun Adi: ${data.urunAdi}`), 14, 28);
-    doc.text(baskanKarakterDuzelt(`Adet: ${data.adet}`), 14, 34);
-    doc.text(baskanKarakterDuzelt(`Uretim Suresi: ${data.sureSaat}sa ${data.sureDakika}dk`), 14, 40);
-    doc.text(baskanKarakterDuzelt(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}`), 14, 46);
+    
+    let currentY = 28;
+    if(musteriAdi !== "") {
+        doc.text(baskanKarakterDuzelt(`Musteri: ${musteriAdi}`), 14, currentY);
+        currentY += 6;
+    }
+    
+    doc.text(baskanKarakterDuzelt(`Urun Adi: ${data.urunAdi}`), 14, currentY);
+    currentY += 6;
+    doc.text(baskanKarakterDuzelt(`Adet: ${data.adet}`), 14, currentY);
+    currentY += 6;
+    doc.text(baskanKarakterDuzelt(`Uretim Suresi: ${data.sureSaat}sa ${data.sureDakika}dk`), 14, currentY);
+    currentY += 6;
+    doc.text(baskanKarakterDuzelt(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}`), 14, currentY);
 
-    let y = 56;
+    let y = currentY + 10;
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt("Gider Kalemi"), 14, y);
     doc.text(baskanKarakterDuzelt("1 Adet (TL)"), 120, y);
@@ -879,7 +895,8 @@ function indirMaliyetPDF() {
     doc.setFontSize(13);
     doc.text(baskanKarakterDuzelt(`NIHAI TOPLAM SATIS (KDV Haric): ${data.toplamSatisKdvHaric} TL`), 14, y);
 
-    doc.save(`Maliyet_Raporu_${data.urunAdi.replace(/\s+/g, '_')}.pdf`);
+    const dosyaAdi = musteriAdi !== "" ? `Maliyet_${musteriAdi.replace(/\s+/g, '_')}_${data.urunAdi.replace(/\s+/g, '_')}` : `Maliyet_Raporu_${data.urunAdi.replace(/\s+/g, '_')}`;
+    doc.save(`${dosyaAdi}.pdf`);
 }
 
 // --- SİPARİŞ KAYDET & STOKTAN DÜŞÜŞ ---
