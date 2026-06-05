@@ -317,6 +317,14 @@ function baskanKarakterDuzelt(text) {
         .replace(/ü/g, 'u').replace(/Ü/g, 'U');
 }
 
+function tasiMusteriAdini() {
+    const maliyetMusteri = document.getElementById('maliyetMusteriAdi');
+    const teklifMusteri = document.getElementById('tekMusteri');
+    if (maliyetMusteri && teklifMusteri && maliyetMusteri.value.trim() !== "") {
+        teklifMusteri.value = maliyetMusteri.value.trim();
+    }
+}
+
 function standartFiyatGuncelle() {
     const yeniFiyat = parseFloat(document.getElementById('canliStandartFiyat').value) || 0;
     standartFilament.fiyat = yeniFiyat;
@@ -390,6 +398,9 @@ function manuelFiyatGuncelle() {
 
 // --- SAYFA NAVİGASYONU ---
 function show(sec) {
+    if (sec === 'teklif') {
+        tasiMusteriAdini();
+    }
     document.querySelectorAll('.card').forEach(c => c.style.display = 'none');
     document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active-nav'));
     document.getElementById(sec + '_sec').style.display = 'block';
@@ -641,12 +652,15 @@ function hesapla(forceRecalc = false) {
         karliBirimFiyatKdvHaric: yuvarlanmisBirimSatis,
         toplamSatisKdvHaric: yuvarlanmisToplamSatisKdvHaric
     };
+    
+    const eskiMusteri = document.getElementById('maliyetMusteriAdi') ? document.getElementById('maliyetMusteriAdi').value : "";
+    
     document.getElementById('res').innerHTML = `
         <div style="border-top:1px solid #ccc; padding-top:8px; margin-top:10px; font-weight:normal;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin: 6px 0; gap:8px; flex-wrap:wrap;">
                 <h4 style="margin: 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Tüm Kalemler Yuvarlanmış)</h4>
                 <div class="flex-row" style="gap:4px;">
-                    <input id="maliyetMusteriAdi" placeholder="Müşteri Adı (Opsiyonel)" style="max-width:140px; padding:3px 6px; margin:0; font-size:11px;">
+                    <input id="maliyetMusteriAdi" placeholder="Müşteri Adı (Opsiyonel)" value="${eskiMusteri}" style="max-width:140px; padding:3px 6px; margin:0; font-size:11px;">
                     <button onclick="indirMaliyetPDF()" style="width:auto; background:#17a2b8; color:#fff; font-size:12px; padding:4px 8px; margin:0;">📊 Raporu İndir</button>
                 </div>
             </div>
@@ -933,6 +947,8 @@ function saveOrder() {
     });
     localStorage.setItem('l3d_orders', JSON.stringify(orders));
 
+    tasiMusteriAdini();
+
     alert("Sipariş başarıyla kaydedildi, malzemeler (fire payı dahil) stoktan düşüldü!");
     sonHesap = null;
     updateFilamentSelects();
@@ -967,6 +983,7 @@ function updateOrderSelectOptions() {
     select.innerHTML = options;
 }
 
+// --- FATURAYA SİPARİŞ EKLE ---
 function faturayaSiparisEkle() {
     const val = document.getElementById('tekSiparisSec').value;
     if(val === "aktif") {
@@ -997,6 +1014,7 @@ function faturayaSiparisEkle() {
             sureDakika: secilenSiparis.sureDakika || 0
         });
     }
+    tasiMusteriAdini();
     gorselFaturaListesiGuncelle();
 }
 
@@ -1038,6 +1056,8 @@ function teklifOlustur() {
         });
         gorselFaturaListesiGuncelle();
     }
+
+    tasiMusteriAdini();
 
     const musteri = document.getElementById('tekMusteri').value.trim() || "Sayın Müşterimiz";
     const sure = document.getElementById('tekSure').value.trim() || "7 Gün";
