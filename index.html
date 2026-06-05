@@ -306,6 +306,17 @@ const standartFilament = {
     fiyat: kayitliStandartFiyat
 };
 
+function baskanKarakterDuzelt(text) {
+    if(!text) return "";
+    return text
+        .replace(/ı/g, 'i').replace(/İ/g, 'I')
+        .replace(/ş/g, 's').replace(/Ş/g, 'S')
+        .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+        .replace(/ç/g, 'c').replace(/Ç/g, 'C')
+        .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+        .replace(/ü/g, 'u').replace(/Ü/g, 'U');
+}
+
 function standartFiyatGuncelle() {
     const yeniFiyat = parseFloat(document.getElementById('canliStandartFiyat').value) || 0;
     standartFilament.fiyat = yeniFiyat;
@@ -412,14 +423,12 @@ function removeStok(id) {
 
 function renderStock() {
     const list = document.getElementById('stock-list');
-    
     let htmlContent = `
         <div class="item flex-row" style="justify-content:space-between; font-size:13px; background: #eef7ff; padding: 6px; border-radius: 4px; margin-top: 8px;">
             <div><b>${standartFilament.renk}</b> - Sınırsız - ${standartFilament.fiyat} ₺/Kg</div>
             <div style="font-size: 11px; color: #007bff; font-weight: bold; font-style: italic;">Sistem Kilidi 🔒</div>
         </div>
     `;
-
     if(stock.length > 0) {
         htmlContent += stock.map(s => `
             <div class="item flex-row" style="justify-content:space-between; font-size:13px;">
@@ -485,7 +494,6 @@ function hesapla(forceRecalc = false) {
     const giderTutari = parseFloat(document.getElementById('gider_tutari').value) || 0;
     const kargo = parseFloat(document.getElementById('kargo').value) || 0;
     const karOrani = parseFloat(document.getElementById('kar_orani').value) || 0;
-    
     let filamentTabloSatirlari = "";
     let secilenFilamentler = [];
     let toplamUretimMaliyetiYuv = 0;
@@ -508,20 +516,17 @@ function hesapla(forceRecalc = false) {
         }
         
         if (!fStok) continue;
-
         const gramMaliyeti = fStok.fiyat / 1000;
         
         // 1. MALZEME NET GİDERİ HESABI VE YUVARLAMASI
         const safMaliyetTekHam = tekGram * gramMaliyeti;
         const safMaliyetTekYuv = yuvarlaBesKatina(safMaliyetTekHam);
         const safMaliyetFarkTek = safMaliyetTekYuv - safMaliyetTekHam;
-        
         // 2. FİRE PAYI GİDERİ HESABI VE YUVARLAMASI
         const fireGramTek = tekGram * (fireOrani / 100);
         const fireMaliyetiTekHam = fireGramTek * gramMaliyeti;
         const fireMaliyetiTekYuv = yuvarlaBesKatina(fireMaliyetiTekHam);
         const fireMaliyetiFarkTek = fireMaliyetiTekYuv - fireMaliyetiTekHam;
-        
         toplamUretimMaliyetiYuv += (safMaliyetTekYuv + fireMaliyetiTekYuv);
 
         filamentTabloSatirlari += `
@@ -546,11 +551,17 @@ function hesapla(forceRecalc = false) {
                 <td>${(fireMaliyetiTekHam * adet).toFixed(2)} ₺ / +${(fireMaliyetiFarkTek * adet).toFixed(2)} ₺</td>
             </tr>
         `;
-
         secilenFilamentler.push({
             stockId: stockId,
             renk: fStok.renk,
             tekGram: tekGram,
+            safMaliyetTekYuv: safMaliyetTekYuv,
+            safMaliyetTekHam: safMaliyetTekHam,
+            safMaliyetFarkTek: safMaliyetFarkTek,
+            fireGramTek: fireGramTek,
+            fireMaliyetiTekYuv: fireMaliyetiTekYuv,
+            fireMaliyetiTekHam: fireMaliyetiTekHam,
+            fireMaliyetiFarkTek: fireMaliyetiFarkTek,
             toplamGram: (tekGram + fireGramTek) * adet
         });
     }
@@ -559,7 +570,6 @@ function hesapla(forceRecalc = false) {
     const elektrikMaliyetiTekHam = (watt / 1000) * toplamSaat * elektrikBirim;
     const elektrikMaliyetiTekYuv = yuvarlaBesKatina(elektrikMaliyetiTekHam);
     const elektrikFarkTek = elektrikMaliyetiTekYuv - elektrikMaliyetiTekHam;
-
     // 4. AMORTİSMAN GİDERİ HESABI VE YUVARLAMASI
     const amortismanMaliyetiTekHam = toplamSaat * amortismanBirim;
     const amortismanMaliyetiTekYuv = yuvarlaBesKatina(amortismanMaliyetiTekHam);
@@ -569,14 +579,11 @@ function hesapla(forceRecalc = false) {
     const giderTutariTekHam = giderTutari;
     const giderTutariTekYuv = yuvarlaBesKatina(giderTutariTekHam);
     const giderFarkTek = giderTutariTekYuv - giderTutariTekHam;
-
     // Toplam üretim maliyetine diğer yuvarlanmış kalemleri de ekliyoruz
     toplamUretimMaliyetiYuv += (elektrikMaliyetiTekYuv + amortismanMaliyetiTekYuv + giderTutariTekYuv);
-    
     // Kargo Hariç Üretim Maliyetleri
     const yuvarlanmisNetMaliyetTek = toplamUretimMaliyetiYuv;
     const yuvarlanmisToplamUretimMaliyeti = yuvarlanmisNetMaliyetTek * adet;
-    
     // Genel kargo dahil maliyet
     const genelMaliyetKargoDahilYuv = yuvarlanmisToplamUretimMaliyeti + kargo;
 
@@ -597,16 +604,31 @@ function hesapla(forceRecalc = false) {
         secilenFilamentler,
         sureSaat: inputSaat,
         sureDakika: inputDakika,
+        watt,
+        elektrikMaliyetiTekYuv,
+        elektrikMaliyetiTekHam,
+        elektrikFarkTek,
+        amortismanMaliyetiTekYuv,
+        amortismanMaliyetiTekHam,
+        amortismanFarkTek,
+        giderTuru,
+        giderTutariTekYuv,
+        giderTutariTekHam,
+        giderFarkTek,
+        kargo,
+        karOrani,
         netMaliyetTek: yuvarlanmisNetMaliyetTek,
         toplamUretimMaliyeti: yuvarlanmisToplamUretimMaliyeti,
         genelMaliyetKargoDahil: yuvarlaBesKatina(genelMaliyetKargoDahilYuv),
         karliBirimFiyatKdvHaric: yuvarlanmisBirimSatis,
         toplamSatisKdvHaric: yuvarlanmisToplamSatisKdvHaric
     };
-
     document.getElementById('res').innerHTML = `
         <div style="border-top:1px solid #ccc; padding-top:8px; margin-top:10px; font-weight:normal;">
-            <h4 style="margin: 6px 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Tüm Kalemler Yuvarlanmış)</h4>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin: 6px 0;">
+                <h4 style="margin: 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Tüm Kalemler Yuvarlanmış)</h4>
+                <button onclick="indirMaliyetPDF()" style="width:auto; background:#17a2b8; color:#fff; font-size:12px; padding:4px 8px;">📊 Raporu İndir</button>
+            </div>
             <table class="maliyet-tablo">
                 <thead>
                     <tr>
@@ -693,6 +715,153 @@ function hesapla(forceRecalc = false) {
     }
     
     return sonHesap;
+}
+
+// --- MALİYET RAPORU PDF İNDİRME FONKSİYONU ---
+function indirMaliyetPDF() {
+    const data = sonHesap || hesapla();
+    if (!data) return;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(baskanKarakterDuzelt(`suRFace 3D - DETAYLI MALIYET RAPORU`), 14, 20);
+
+    doc.setFontSize(11);
+    doc.setFont("Helvetica", "normal");
+    doc.text(baskanKarakterDuzelt(`Urun Adi: ${data.urunAdi}`), 14, 28);
+    doc.text(baskanKarakterDuzelt(`Adet: ${data.adet}`), 14, 34);
+    doc.text(baskanKarakterDuzelt(`Uretim Suresi: ${data.sureSaat}sa ${data.sureDakika}dk`), 14, 40);
+    doc.text(baskanKarakterDuzelt(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}`), 14, 46);
+
+    let y = 56;
+    doc.setFont("Helvetica", "bold");
+    doc.text(baskanKarakterDuzelt("Gider Kalemi"), 14, y);
+    doc.text(baskanKarakterDuzelt("1 Adet (TL)"), 120, y);
+    doc.text(baskanKarakterDuzelt(`Toplam [${data.adet} Adet] (TL)`), 160, y);
+    doc.line(14, y + 2, 196, y + 2);
+    y += 8;
+
+    // Filamentler listeleniyor
+    data.secilenFilamentler.forEach(f => {
+        doc.setFont("Helvetica", "bold");
+        doc.text(baskanKarakterDuzelt(`Malzeme Net [${f.renk}] (${f.tekGram}g)`), 14, y);
+        doc.text(`${f.safMaliyetTekYuv}`, 120, y);
+        doc.text(`${f.safMaliyetTekYuv * data.adet}`, 160, y);
+        y += 5;
+        
+        doc.setFont("Helvetica", "oblique");
+        doc.setFontSize(9);
+        doc.setTextColor(110, 110, 110);
+        doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+        doc.text(`${f.safMaliyetTekHam.toFixed(2)} / +${f.safMaliyetFarkTek.toFixed(2)}`, 120, y);
+        doc.text(`${(f.safMaliyetTekHam * data.adet).toFixed(2)} / +${(f.safMaliyetFarkTek * data.adet).toFixed(2)}`, 160, y);
+        y += 6;
+        
+        doc.setFontSize(11);
+        doc.setTextColor(188, 108, 37); // fire rengi
+        doc.setFont("Helvetica", "bold");
+        doc.text(baskanKarakterDuzelt(`  > Fire Payi (${f.fireGramTek.toFixed(1)}g)`), 14, y);
+        doc.text(`${f.fireMaliyetiTekYuv}`, 120, y);
+        doc.text(`${f.fireMaliyetiTekYuv * data.adet}`, 160, y);
+        y += 5;
+
+        doc.setFont("Helvetica", "oblique");
+        doc.setFontSize(9);
+        doc.setTextColor(110, 110, 110);
+        doc.text(baskanKarakterDuzelt(`    Ham Hesap / Ust Fark:`), 14, y);
+        doc.text(`${f.fireMaliyetiTekHam.toFixed(2)} / +${f.fireMaliyetiFarkTek.toFixed(2)}`, 120, y);
+        doc.text(`${(f.fireMaliyetiTekHam * data.adet).toFixed(2)} / +${(f.fireMaliyetiFarkTek * data.adet).toFixed(2)}`, 160, y);
+        y += 6;
+        doc.setFontSize(11);
+        doc.setTextColor(0,0,0);
+    });
+
+    // Elektrik
+    doc.setFont("Helvetica", "bold");
+    doc.text(baskanKarakterDuzelt(`Elektrik (${data.watt}W)`), 14, y);
+    doc.text(`${data.elektrikMaliyetiTekYuv}`, 120, y);
+    doc.text(`${data.elektrikMaliyetiTekYuv * data.adet}`, 160, y);
+    y += 5;
+    doc.setFont("Helvetica", "oblique");
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 110);
+    doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+    doc.text(`${data.elektrikMaliyetiTekHam.toFixed(2)} / +${data.elektrikFarkTek.toFixed(2)}`, 120, y);
+    doc.text(`${(data.elektrikMaliyetiTekHam * data.adet).toFixed(2)} / +${(data.elektrikFarkTek * data.adet).toFixed(2)}`, 160, y);
+    y += 6;
+    doc.setFontSize(11);
+    doc.setTextColor(0,0,0);
+
+    // Amortisman
+    doc.setFont("Helvetica", "bold");
+    doc.text(baskanKarakterDuzelt(`Yazici Amortisman Payi`), 14, y);
+    doc.text(`${data.amortismanMaliyetiTekYuv}`, 120, y);
+    doc.text(`${data.amortismanMaliyetiTekYuv * data.adet}`, 160, y);
+    y += 5;
+    doc.setFont("Helvetica", "oblique");
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 110);
+    doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+    doc.text(`${data.amortismanMaliyetiTekHam.toFixed(2)} / +${data.amortismanFarkTek.toFixed(2)}`, 120, y);
+    doc.text(`${(data.amortismanMaliyetiTekHam * data.adet).toFixed(2)} / +${(data.amortismanFarkTek * data.adet).toFixed(2)}`, 160, y);
+    y += 6;
+    doc.setFontSize(11);
+    doc.setTextColor(0,0,0);
+
+    // Ekstra Gider
+    doc.setFont("Helvetica", "bold");
+    doc.text(baskanKarakterDuzelt(`${data.giderTuru}`), 14, y);
+    doc.text(`${data.giderTutariTekYuv}`, 120, y);
+    doc.text(`${data.giderTutariTekYuv * data.adet}`, 160, y);
+    y += 5;
+    doc.setFont("Helvetica", "oblique");
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 110);
+    doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+    doc.text(`${data.giderTutariTekHam.toFixed(2)} / +${data.giderFarkTek.toFixed(2)}`, 120, y);
+    doc.text(`${(data.giderTutariTekHam * data.adet).toFixed(2)} / +${(data.giderFarkTek * data.adet).toFixed(2)}`, 160, y);
+    y += 6;
+    doc.setFontSize(11);
+    doc.setTextColor(0,0,0);
+
+    doc.line(14, y, 196, y);
+    y += 6;
+
+    // Özet satırları
+    doc.setFont("Helvetica", "bold");
+    doc.text(baskanKarakterDuzelt("Net Uretim Gideri (Yuvarlanmis):"), 14, y);
+    doc.text(`${data.netMaliyetTek} TL`, 120, y);
+    doc.text(`${data.toplamUretimMaliyeti} TL`, 160, y);
+    y += 6;
+
+    doc.setFont("Helvetica", "normal");
+    doc.text(baskanKarakterDuzelt("Kargo Ucreti:"), 14, y);
+    doc.text(`${(data.kargo / data.adet).toFixed(2)} TL`, 120, y);
+    doc.text(`${data.kargo.toFixed(2)} TL`, 160, y);
+    y += 6;
+
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(12, 84, 96);
+    doc.text(baskanKarakterDuzelt("Kargo Dahil Genel Maliyet:"), 14, y);
+    doc.text(`${Math.ceil(data.genelMaliyetKargoDahil / data.adet)} TL`, 120, y);
+    doc.text(`${data.genelMaliyetKargoDahil} TL`, 160, y);
+    y += 8;
+
+    doc.line(14, y, 196, y);
+    y += 8;
+
+    doc.setTextColor(0, 123, 255);
+    doc.text(baskanKarakterDuzelt(`Uygulanan Kar Orani: %${data.karOrani}`), 14, y);
+    y += 6;
+    doc.text(baskanKarakterDuzelt(`Birim Satis Fiyati: ${data.karliBirimFiyatKdvHaric} TL`), 14, y);
+    y += 6;
+    doc.setFontSize(13);
+    doc.text(baskanKarakterDuzelt(`NIHAI TOPLAM SATIS (KDV Haric): ${data.toplamSatisKdvHaric} TL`), 14, y);
+
+    doc.save(`Maliyet_Raporu_${data.urunAdi.replace(/\s+/g, '_')}.pdf`);
 }
 
 // --- SİPARİŞ KAYDET & STOKTAN DÜŞÜŞ ---
@@ -902,9 +1071,9 @@ function indirPDF() {
 
     doc.setFontSize(11);
     doc.setFont("Helvetica", "normal");
-    doc.text(`Firma / Marka: suRFace 3D`, 14, 26);
-    doc.text(`Musteri / Firma: ${document.getElementById('outMusteri').innerText}`, 14, 32);
-    doc.text(`Gecerlilik Suresi: ${document.getElementById('outSure').innerText}`, 14, 38);
+    doc.text(baskanKarakterDuzelt(`Firma / Marka: suRFace 3D`), 14, 26);
+    doc.text(baskanKarakterDuzelt(`Musteri / Firma: ${document.getElementById('outMusteri').innerText}`), 14, 32);
+    doc.text(baskanKarakterDuzelt(`Gecerlilik Suresi: ${document.getElementById('outSure').innerText}`), 14, 38);
     doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 44);
 
     let y = 55;
@@ -920,7 +1089,7 @@ function indirPDF() {
     faturayaEklenenSiparisler.forEach(item => {
         const urunFiyati = item.fiyat;
         doc.setFont("Helvetica", "bold");
-        doc.text(item.urunAdi.substring(0, 45), 14, y);
+        doc.text(baskanKarakterDuzelt(item.urunAdi.substring(0, 45)), 14, y);
         doc.setFont("Helvetica", "normal");
         
         doc.text(item.adet.toString(), 110, y);
@@ -933,7 +1102,7 @@ function indirPDF() {
             doc.setFont("Helvetica", "oblique");
             doc.setFontSize(12);
             doc.setTextColor(40, 167, 69);
-            doc.text(`* Bu urunun ${item.sureSaat || 0} saat ${item.sureDakika || 0} dakika uretim sureci vardir.`, 16, y);
+            doc.text(baskanKarakterDuzelt(`* Bu urunun ${item.sureSaat || 0} saat ${item.sureDakika || 0} dakika uretim sureci vardir.`), 16, y);
             doc.setFontSize(11);
             doc.setFont("Helvetica", "normal");
             doc.setTextColor(0, 0, 0);
@@ -947,7 +1116,7 @@ function indirPDF() {
     doc.text(`Ara Toplam:`, 120, y);
     doc.text(`${document.getElementById('outAra').innerText} TL`, 170, y);
     y += 6;
-    doc.text(`Iskonto (%${document.getElementById('outIskontoOran').innerText}):`, 120, y);
+    doc.text(baskanKarakterDuzelt(`Iskonto (%${document.getElementById('outIskontoOran').innerText}):`), 120, y);
     doc.text(`-${document.getElementById('outIskontoTutar').innerText} TL`, 170, y);
     y += 6;
     if (kdvUygula) {
