@@ -355,6 +355,7 @@ function toggleManuelFiyat() {
     if (kontrolKutusu && fiyatGirdisi) {
         if (kontrolKutusu.checked) {
             fiyatGirdisi.removeAttribute('disabled');
+            manuelFiyatGuncelle();
         } else {
             fiyatGirdisi.setAttribute('disabled', 'true');
             hesapla(true);
@@ -362,18 +363,28 @@ function toggleManuelFiyat() {
     }
 }
 
-// --- MANUEL FİYAT ELLE DEĞİŞTİRİLDİĞİNDE TOPLAMI GÜNCELLEME ---
+// --- MANUEL FİYAT ELLE DEĞİŞTİRİLDİĞİNDE TOPLAMI VE KÂR ORANINI GÜNCELLEME ---
 function manuelFiyatGuncelle() {
     const birimFiyat = parseFloat(document.getElementById('manuelBirimSatisInput').value) || 0;
     const adet = parseInt(document.getElementById('adet').value) || 1;
     const kargo = parseFloat(document.getElementById('kargo').value) || 0;
     const yeniToplamSatis = (birimFiyat * adet) + kargo;
     
-    document.getElementById('outBirimSatisYazi').innerText = birimFiyat;
     document.getElementById('outToplamSatisYazi').innerText = yeniToplamSatis;
+    document.getElementById('outBirimSatisYazi').innerText = birimFiyat;
+    
     if (sonHesap) {
         sonHesap.karliBirimFiyatKdvHaric = birimFiyat;
         sonHesap.toplamSatisKdvHaric = yeniToplamSatis;
+        
+        if (sonHesap.netMaliyetTek > 0) {
+            const yeniKarOrani = ((birimFiyat - sonHesap.netMaliyetTek) / sonHesap.netMaliyetTek) * 100;
+            sonHesap.karOrani = yeniKarOrani.toFixed(1);
+            document.getElementById('dinamikKarYazi').innerText = yeniKarOrani.toFixed(1);
+        } else {
+            sonHesap.karOrani = 0;
+            document.getElementById('dinamikKarYazi').innerText = "0";
+        }
     }
 }
 
@@ -589,9 +600,16 @@ function hesapla(forceRecalc = false) {
 
     const kontrolKutusu = document.getElementById('manuelFiyatKontrol');
     let yuvarlanmisBirimSatis = 0;
+    let gorunurKarOrani = karOrani;
     
     if (kontrolKutusu && kontrolKutusu.checked && !forceRecalc) {
         yuvarlanmisBirimSatis = parseFloat(document.getElementById('manuelBirimSatisInput').value) || 0;
+        if (yuvarlanmisNetMaliyetTek > 0) {
+            gorunurKarOrani = ((yuvarlanmisBirimSatis - yuvarlanmisNetMaliyetTek) / yuvarlanmisNetMaliyetTek) * 100;
+            gorunurKarOrani = gorunurKarOrani.toFixed(1);
+        } else {
+            gorunurKarOrani = 0;
+        }
     } else {
         const karliBirimFiyatKdvHaricHam = yuvarlanmisNetMaliyetTek * (1 + (karOrani / 100));
         yuvarlanmisBirimSatis = yuvarlaBesKatina(karliBirimFiyatKdvHaricHam);
@@ -616,7 +634,7 @@ function hesapla(forceRecalc = false) {
         giderTutariTekHam,
         giderFarkTek,
         kargo,
-        karOrani,
+        karOrani: gorunurKarOrani,
         netMaliyetTek: yuvarlanmisNetMaliyetTek,
         toplamUretimMaliyeti: yuvarlanmisToplamUretimMaliyeti,
         genelMaliyetKargoDahil: yuvarlaBesKatina(genelMaliyetKargoDahilYuv),
@@ -692,7 +710,7 @@ function hesapla(forceRecalc = false) {
             </table>
 
             <div style="margin-top:10px; background: #e2e3e5; padding: 8px; border-radius: 4px;">
-                <p style="margin:2px 0; font-size:12px;"><b>Uygulanan Kar Oranı:</b> %${karOrani}</p>
+                <p style="margin:2px 0; font-size:12px;"><b>Uygulanan Kar Oranı:</b> %<span id="dinamikKarYazi">${gorunurKarOrani}</span></p>
                 
                 <div style="background: #fff; padding: 6px; border-radius: 4px; margin: 4px 0; border: 1px solid #ccc;">
                     <label class="checkbox-row" style="margin: 0 0 4px 0;">
