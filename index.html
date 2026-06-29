@@ -518,7 +518,9 @@ function hesapla(forceRecalc = false) {
     const karOrani = parseFloat(document.getElementById('kar_orani').value) || 0;
     let filamentTabloSatirlari = "";
     let secilenFilamentler = [];
-    let toplamUretimMaliyetiYuv = 0;
+    
+    let toplamUretimMaliyetiTekYuv = 0;
+    let toplamUretimMaliyetiToplamYuv = 0;
 
     const rows = document.querySelectorAll('#filament-container .filament-row');
     if(rows.length === 0) {
@@ -540,37 +542,50 @@ function hesapla(forceRecalc = false) {
         if (!fStok) continue;
         const gramMaliyeti = fStok.fiyat / 1000;
         
-        // 1. MALZEME NET GİDERİ HESABI VE YUVARLAMASI
+        // 1. MALZEME NET GİDERİ HESABI (Tekil Ham -> Yuvarlanmış)
         const safMaliyetTekHam = tekGram * gramMaliyeti;
         const safMaliyetTekYuv = yuvarlaBesKatina(safMaliyetTekHam);
         const safMaliyetFarkTek = safMaliyetTekYuv - safMaliyetTekHam;
-        // 2. FİRE PAYI GİDERİ HESABI VE YUVARLAMASI
+
+        // Toplam Sütunu İçin: Yuvarlamadan Çarpıp Sonra Yuvarlama Kuralı
+        const safMaliyetToplamHam = safMaliyetTekHam * adet;
+        const safMaliyetToplamYuv = yuvarlaBesKatina(safMaliyetToplamHam);
+        const safMaliyetFarkToplam = safMaliyetToplamYuv - safMaliyetToplamHam;
+
+        // 2. FİRE PAYI GİDERİ HESABI (Tekil Ham -> Yuvarlanmış)
         const fireGramTek = tekGram * (fireOrani / 100);
         const fireMaliyetiTekHam = fireGramTek * gramMaliyeti;
         const fireMaliyetiTekYuv = yuvarlaBesKatina(fireMaliyetiTekHam);
         const fireMaliyetiFarkTek = fireMaliyetiTekYuv - fireMaliyetiTekHam;
-        toplamUretimMaliyetiYuv += (safMaliyetTekYuv + fireMaliyetiTekYuv);
+
+        // Toplam Sütunu İçin: Yuvarlamadan Çarpıp Sonra Yuvarlama Kuralı
+        const fireMaliyetiToplamHam = fireMaliyetiTekHam * adet;
+        const fireMaliyetiToplamYuv = yuvarlaBesKatina(fireMaliyetiToplamHam);
+        const fireMaliyetiFarkToplam = fireMaliyetiToplamYuv - fireMaliyetiToplamHam;
+
+        toplamUretimMaliyetiTekYuv += (safMaliyetTekYuv + fireMaliyetiTekYuv);
+        toplamUretimMaliyetiToplamYuv += (safMaliyetToplamYuv + fireMaliyetiToplamYuv);
 
         filamentTabloSatirlari += `
             <tr style="font-weight: bold; background: #fafafa;">
                 <td>Malzeme Net Tüketim: ${fStok.renk} (${tekGram}g)</td>
                 <td>${safMaliyetTekYuv} ₺</td>
-                <td>${safMaliyetTekYuv * adet} ₺</td>
+                <td>${safMaliyetToplamYuv} ₺</td>
             </tr>
             <tr style="color: #6c757d; font-style: italic;">
                 <td>└ Ham Hesaplanan / Üst Fark</td>
                 <td>${safMaliyetTekHam.toFixed(2)} ₺ / +${safMaliyetFarkTek.toFixed(2)} ₺</td>
-                <td>${(safMaliyetTekHam * adet).toFixed(2)} ₺ / +${(safMaliyetFarkTek * adet).toFixed(2)} ₺</td>
+                <td>${safMaliyetToplamHam.toFixed(2)} ₺ / +${safMaliyetFarkToplam.toFixed(2)} ₺</td>
             </tr>
             <tr style="font-weight: bold; background: #fafafa; color: #bc6c25;">
                 <td>└ %${fireOrani} Fire Payı (${fireGramTek.toFixed(1)}g)</td>
                 <td>${fireMaliyetiTekYuv} ₺</td>
-                <td>${fireMaliyetiTekYuv * adet} ₺</td>
+                <td>${fireMaliyetiToplamYuv} ₺</td>
             </tr>
             <tr style="color: #6c757d; font-style: italic;">
                 <td>└ Ham Hesaplanan / Üst Fark</td>
                 <td>${fireMaliyetiTekHam.toFixed(2)} ₺ / +${fireMaliyetiFarkTek.toFixed(2)} ₺</td>
-                <td>${(fireMaliyetiTekHam * adet).toFixed(2)} ₺ / +${(fireMaliyetiFarkTek * adet).toFixed(2)} ₺</td>
+                <td>${fireMaliyetiToplamHam.toFixed(2)} ₺ / +${fireMaliyetiFarkToplam.toFixed(2)} ₺</td>
             </tr>
         `;
         secilenFilamentler.push({
@@ -580,34 +595,53 @@ function hesapla(forceRecalc = false) {
             safMaliyetTekYuv: safMaliyetTekYuv,
             safMaliyetTekHam: safMaliyetTekHam,
             safMaliyetFarkTek: safMaliyetFarkTek,
+            safMaliyetToplamYuv: safMaliyetToplamYuv,
+            safMaliyetToplamHam: safMaliyetToplamHam,
+            safMaliyetFarkToplam: safMaliyetFarkToplam,
             fireGramTek: fireGramTek,
             fireMaliyetiTekYuv: fireMaliyetiTekYuv,
             fireMaliyetiTekHam: fireMaliyetiTekHam,
             fireMaliyetiFarkTek: fireMaliyetiFarkTek,
+            fireMaliyetiToplamYuv: fireMaliyetiToplamYuv,
+            fireMaliyetiToplamHam: fireMaliyetiToplamHam,
+            fireMaliyetiFarkToplam: fireMaliyetiFarkToplam,
             toplamGram: (tekGram + fireGramTek) * adet
         });
     }
 
-    // 3. ELEKTRİK GİDERİ HESABI VE YUVARLAMASI
+    // 3. ELEKTRİK GİDERİ HESABI
     const elektrikMaliyetiTekHam = (watt / 1000) * toplamSaat * elektrikBirim;
     const elektrikMaliyetiTekYuv = yuvarlaBesKatina(elektrikMaliyetiTekHam);
     const elektrikFarkTek = elektrikMaliyetiTekYuv - elektrikMaliyetiTekHam;
-    // 4. AMORTİSMAN GİDERİ HESABI VE YUVARLAMASI
+
+    const elektrikMaliyetiToplamHam = elektrikMaliyetiTekHam * adet;
+    const elektrikMaliyetiToplamYuv = yuvarlaBesKatina(elektrikMaliyetiToplamHam);
+    const elektrikFarkToplam = elektrikMaliyetiToplamYuv - elektrikMaliyetiToplamHam;
+
+    // 4. AMORTİSMAN GİDERİ HESABI
     const amortismanMaliyetiTekHam = toplamSaat * amortismanBirim;
     const amortismanMaliyetiTekYuv = yuvarlaBesKatina(amortismanMaliyetiTekHam);
     const amortismanFarkTek = amortismanMaliyetiTekYuv - amortismanMaliyetiTekHam;
 
-    // 5. İŞÇİLİK / EKSTRA GİDER HESABI VE YUVARLAMASI
+    const amortismanMaliyetiToplamHam = amortismanMaliyetiTekHam * adet;
+    const amortismanMaliyetiToplamYuv = yuvarlaBesKatina(amortismanMaliyetiToplamHam);
+    const amortismanFarkToplam = amortismanMaliyetiToplamYuv - amortismanMaliyetiToplamHam;
+
+    // 5. İŞÇİLİK / EKSTRA GİDER HESABI
     const giderTutariTekHam = giderTutari;
     const giderTutariTekYuv = yuvarlaBesKatina(giderTutariTekHam);
     const giderFarkTek = giderTutariTekYuv - giderTutariTekHam;
-    // Toplam üretim maliyetine diğer yuvarlanmış kalemleri de ekliyoruz
-    toplamUretimMaliyetiYuv += (elektrikMaliyetiTekYuv + amortismanMaliyetiTekYuv + giderTutariTekYuv);
-    // Kargo Hariç Üretim Maliyetleri
-    const yuvarlanmisNetMaliyetTek = toplamUretimMaliyetiYuv;
-    const yuvarlanmisToplamUretimMaliyeti = yuvarlanmisNetMaliyetTek * adet;
-    // Genel kargo dahil maliyet
-    const genelMaliyetKargoDahilYuv = yuvarlanmisToplamUretimMaliyeti + kargo;
+
+    const giderTutariToplamHam = giderTutariTekHam * adet;
+    const giderTutariToplamYuv = yuvarlaBesKatina(giderTutariToplamHam);
+    const giderFarkToplam = giderTutariToplamYuv - giderTutariToplamHam;
+
+    // Sütun Toplamlarının Belirlenmesi
+    toplamUretimMaliyetiTekYuv += (elektrikMaliyetiTekYuv + amortismanMaliyetiTekYuv + giderTutariTekYuv);
+    toplamUretimMaliyetiToplamYuv += (elektrikMaliyetiToplamYuv + amortismanMaliyetiToplamYuv + giderTutariToplamYuv);
+
+    const yuvarlanmisNetMaliyetTek = toplamUretimMaliyetiTekYuv;
+    const yuvarlanmisToplamUretimMaliyeti = toplamUretimMaliyetiToplamYuv;
 
     const kontrolKutusu = document.getElementById('manuelFiyatKontrol');
     let yuvarlanmisBirimSatis = 0;
@@ -637,18 +671,27 @@ function hesapla(forceRecalc = false) {
         elektrikMaliyetiTekYuv,
         elektrikMaliyetiTekHam,
         elektrikFarkTek,
+        elektrikMaliyetiToplamYuv,
+        elektrikMaliyetiToplamHam,
+        elektrikFarkToplam,
         amortismanMaliyetiTekYuv,
         amortismanMaliyetiTekHam,
         amortismanFarkTek,
+        amortismanMaliyetiToplamYuv,
+        amortismanMaliyetiToplamHam,
+        amortismanFarkToplam,
         giderTuru,
         giderTutariTekYuv,
         giderTutariTekHam,
         giderFarkTek,
+        giderTutariToplamYuv,
+        giderTutariToplamHam,
+        giderFarkToplam,
         kargo,
         karOrani: gorunurKarOrani,
         netMaliyetTek: yuvarlanmisNetMaliyetTek,
         toplamUretimMaliyeti: yuvarlanmisToplamUretimMaliyeti,
-        genelMaliyetKargoDahil: yuvarlaBesKatina(genelMaliyetKargoDahilYuv),
+        genelMaliyetKargoDahil: yuvarlaBesKatina(yuvarlanmisToplamUretimMaliyeti + kargo),
         karliBirimFiyatKdvHaric: yuvarlanmisBirimSatis,
         toplamSatisKdvHaric: yuvarlanmisToplamSatisKdvHaric
     };
@@ -658,7 +701,7 @@ function hesapla(forceRecalc = false) {
     document.getElementById('res').innerHTML = `
         <div style="border-top:1px solid #ccc; padding-top:8px; margin-top:10px; font-weight:normal;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin: 6px 0; gap:8px; flex-wrap:wrap;">
-                <h4 style="margin: 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Tüm Kalemler Yuvarlanmış)</h4>
+                <h4 style="margin: 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Toplam Sütunu Sonradan Yuvarlanır)</h4>
                 <div class="flex-row" style="gap:4px;">
                     <input id="maliyetMusteriAdi" placeholder="Müşteri Adı (Opsiyonel)" value="${eskiMusteri}" style="max-width:140px; padding:3px 6px; margin:0; font-size:11px;">
                     <button onclick="indirMaliyetPDF()" style="width:auto; background:#17a2b8; color:#fff; font-size:12px; padding:4px 8px; margin:0;">📊 Raporu İndir</button>
@@ -678,34 +721,34 @@ function hesapla(forceRecalc = false) {
                     <tr style="font-weight: bold; background: #fafafa;">
                         <td>Elektrik (${inputSaat}sa ${inputDakika}dk / ${watt}W)</td>
                         <td>${elektrikMaliyetiTekYuv} ₺</td>
-                        <td>${elektrikMaliyetiTekYuv * adet} ₺</td>
+                        <td>${elektrikMaliyetiToplamYuv} ₺</td>
                     </tr>
                     <tr style="color: #6c757d; font-style: italic;">
                         <td>└ Ham Hesaplanan / Üst Fark</td>
                         <td>${elektrikMaliyetiTekHam.toFixed(2)} ₺ / +${elektrikFarkTek.toFixed(2)} ₺</td>
-                        <td>${(elektrikMaliyetiTekHam * adet).toFixed(2)} ₺ / +${(elektrikFarkTek * adet).toFixed(2)} ₺</td>
+                        <td>${elektrikMaliyetiToplamHam.toFixed(2)} ₺ / +${elektrikFarkToplam.toFixed(2)} ₺</td>
                     </tr>
 
                     <tr style="font-weight: bold; background: #fafafa;">
                         <td>Yazıcı Amortisman Payı</td>
                         <td>${amortismanMaliyetiTekYuv} ₺</td>
-                        <td>${amortismanMaliyetiTekYuv * adet} ₺</td>
+                        <td>${amortismanMaliyetiToplamYuv} ₺</td>
                     </tr>
                     <tr style="color: #6c757d; font-style: italic;">
                         <td>└ Ham Hesaplanan / Üst Fark</td>
                         <td>${amortismanMaliyetiTekHam.toFixed(2)} ₺ / +${amortismanFarkTek.toFixed(2)} ₺</td>
-                        <td>${(amortismanMaliyetiTekHam * adet).toFixed(2)} ₺ / +${(amortismanFarkTek * adet).toFixed(2)} ₺</td>
+                        <td>${amortismanMaliyetiToplamHam.toFixed(2)} ₺ / +${amortismanFarkToplam.toFixed(2)} ₺</td>
                     </tr>
 
                     <tr style="font-weight: bold; background: #fafafa;">
                         <td>${giderTuru}</td>
                         <td>${giderTutariTekYuv} ₺</td>
-                        <td>${giderTutariTekYuv * adet} ₺</td>
+                        <td>${giderTutariToplamYuv} ₺</td>
                     </tr>
                     <tr style="color: #6c757d; font-style: italic;">
                         <td>└ Ham Hesaplanan / Üst Fark</td>
                         <td>${giderTutariTekHam.toFixed(2)} ₺ / +${giderFarkTek.toFixed(2)} ₺</td>
-                        <td>${(giderTutariTekHam * adet).toFixed(2)} ₺ / +${(giderFarkTek * adet).toFixed(2)} ₺</td>
+                        <td>${giderTutariToplamHam.toFixed(2)} ₺ / +${giderFarkToplam.toFixed(2)} ₺</td>
                     </tr>
 
                     <tr class="toplam-satir" style="background: #e9ecef;">
@@ -720,8 +763,8 @@ function hesapla(forceRecalc = false) {
                     </tr>
                     <tr class="toplam-satir" style="background:#d1ecf1; color:#0c5460;">
                         <td>Kargo Dahil Genel Maliyet</td>
-                        <td>${yuvarlaBesKatina(genelMaliyetKargoDahilYuv / adet)} ₺</td>
-                        <td>${yuvarlaBesKatina(genelMaliyetKargoDahilYuv)} ₺</td>
+                        <td>${yuvarlaBesKatina(yuvarlanmisNetMaliyetTek + (kargo / adet))} ₺</td>
+                        <td>${yuvarlaBesKatina(yuvarlanmisToplamUretimMaliyeti + kargo)} ₺</td>
                     </tr>
                 </tbody>
             </table>
@@ -797,23 +840,23 @@ function indirMaliyetPDF() {
         doc.setFont("Helvetica", "bold");
         doc.text(baskanKarakterDuzelt(`Malzeme Net [${f.renk}] (${f.tekGram}g)`), 14, y);
         doc.text(`${f.safMaliyetTekYuv}`, 120, y);
-        doc.text(`${f.safMaliyetTekYuv * data.adet}`, 160, y);
+        doc.text(`${f.safMaliyetToplamYuv}`, 160, y);
         y += 5;
         
         doc.setFont("Helvetica", "oblique");
         doc.setFontSize(9);
         doc.setTextColor(110, 110, 110);
-        doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+        doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
         doc.text(`${f.safMaliyetTekHam.toFixed(2)} / +${f.safMaliyetFarkTek.toFixed(2)}`, 120, y);
-        doc.text(`${(f.safMaliyetTekHam * data.adet).toFixed(2)} / +${(f.safMaliyetFarkTek * data.adet).toFixed(2)}`, 160, y);
+        doc.text(`${f.safMaliyetToplamHam.toFixed(2)} / +${f.safMaliyetFarkToplam.toFixed(2)}`, 160, y);
         y += 6;
         
         doc.setFontSize(11);
         doc.setTextColor(188, 108, 37); // fire rengi
         doc.setFont("Helvetica", "bold");
-        doc.text(baskanKarakterDuzelt(`  > Fire Payi (${f.fireGramTek.toFixed(1)}g)`), 14, y);
+        doc.text(baskanKarakterDuzelt(`   > Fire Payi (${f.fireGramTek.toFixed(1)}g)`), 14, y);
         doc.text(`${f.fireMaliyetiTekYuv}`, 120, y);
-        doc.text(`${f.fireMaliyetiTekYuv * data.adet}`, 160, y);
+        doc.text(`${f.fireMaliyetiToplamYuv}`, 160, y);
         y += 5;
 
         doc.setFont("Helvetica", "oblique");
@@ -821,7 +864,7 @@ function indirMaliyetPDF() {
         doc.setTextColor(110, 110, 110);
         doc.text(baskanKarakterDuzelt(`    Ham Hesap / Ust Fark:`), 14, y);
         doc.text(`${f.fireMaliyetiTekHam.toFixed(2)} / +${f.fireMaliyetiFarkTek.toFixed(2)}`, 120, y);
-        doc.text(`${(f.fireMaliyetiTekHam * data.adet).toFixed(2)} / +${(f.fireMaliyetiFarkTek * data.adet).toFixed(2)}`, 160, y);
+        doc.text(`${f.fireMaliyetiToplamHam.toFixed(2)} / +${f.fireMaliyetiFarkToplam.toFixed(2)}`, 160, y);
         y += 6;
         doc.setFontSize(11);
         doc.setTextColor(0,0,0);
@@ -831,14 +874,14 @@ function indirMaliyetPDF() {
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt(`Elektrik (${data.watt}W)`), 14, y);
     doc.text(`${data.elektrikMaliyetiTekYuv}`, 120, y);
-    doc.text(`${data.elektrikMaliyetiTekYuv * data.adet}`, 160, y);
+    doc.text(`${data.elektrikMaliyetiToplamYuv}`, 160, y);
     y += 5;
     doc.setFont("Helvetica", "oblique");
     doc.setFontSize(9);
     doc.setTextColor(110, 110, 110);
-    doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+    doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
     doc.text(`${data.elektrikMaliyetiTekHam.toFixed(2)} / +${data.elektrikFarkTek.toFixed(2)}`, 120, y);
-    doc.text(`${(data.elektrikMaliyetiTekHam * data.adet).toFixed(2)} / +${(data.elektrikFarkTek * data.adet).toFixed(2)}`, 160, y);
+    doc.text(`${data.elektrikMaliyetiToplamHam.toFixed(2)} / +${data.elektrikFarkToplam.toFixed(2)}`, 160, y);
     y += 6;
     doc.setFontSize(11);
     doc.setTextColor(0,0,0);
@@ -847,14 +890,14 @@ function indirMaliyetPDF() {
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt(`Yazici Amortisman Payi`), 14, y);
     doc.text(`${data.amortismanMaliyetiTekYuv}`, 120, y);
-    doc.text(`${data.amortismanMaliyetiTekYuv * data.adet}`, 160, y);
+    doc.text(`${data.amortismanMaliyetiToplamYuv}`, 160, y);
     y += 5;
     doc.setFont("Helvetica", "oblique");
     doc.setFontSize(9);
     doc.setTextColor(110, 110, 110);
-    doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+    doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
     doc.text(`${data.amortismanMaliyetiTekHam.toFixed(2)} / +${data.amortismanFarkTek.toFixed(2)}`, 120, y);
-    doc.text(`${(data.amortismanMaliyetiTekHam * data.adet).toFixed(2)} / +${(data.amortismanFarkTek * data.adet).toFixed(2)}`, 160, y);
+    doc.text(`${data.amortismanMaliyetiToplamHam.toFixed(2)} / +${data.amortismanFarkToplam.toFixed(2)}`, 160, y);
     y += 6;
     doc.setFontSize(11);
     doc.setTextColor(0,0,0);
@@ -863,14 +906,14 @@ function indirMaliyetPDF() {
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt(`${data.giderTuru}`), 14, y);
     doc.text(`${data.giderTutariTekYuv}`, 120, y);
-    doc.text(`${data.giderTutariTekYuv * data.adet}`, 160, y);
+    doc.text(`${data.giderTutariToplamYuv}`, 160, y);
     y += 5;
     doc.setFont("Helvetica", "oblique");
     doc.setFontSize(9);
     doc.setTextColor(110, 110, 110);
-    doc.text(baskanKarakterDuzelt(`  > Ham Hesap / Ust Fark:`), 14, y);
+    doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
     doc.text(`${data.giderTutariTekHam.toFixed(2)} / +${data.giderFarkTek.toFixed(2)}`, 120, y);
-    doc.text(`${(data.giderTutariTekHam * data.adet).toFixed(2)} / +${(data.giderFarkTek * data.adet).toFixed(2)}`, 160, y);
+    doc.text(`${data.giderTutariToplamHam.toFixed(2)} / +${data.giderFarkToplam.toFixed(2)}`, 160, y);
     y += 6;
     doc.setFontSize(11);
     doc.setTextColor(0,0,0);
@@ -894,7 +937,7 @@ function indirMaliyetPDF() {
     doc.setFont("Helvetica", "bold");
     doc.setTextColor(12, 84, 96);
     doc.text(baskanKarakterDuzelt("Kargo Dahil Genel Maliyet:"), 14, y);
-    doc.text(`${Math.ceil(data.genelMaliyetKargoDahil / data.adet)} TL`, 120, y);
+    doc.text(`${yuvarlaBesKatina(data.netMaliyetTek + (data.kargo / data.adet))} TL`, 120, y);
     doc.text(`${data.genelMaliyetKargoDahil} TL`, 160, y);
     y += 8;
 
@@ -1126,7 +1169,7 @@ function indirPDF() {
 
     doc.setFontSize(11);
     doc.setFont("Helvetica", "normal");
-    doc.text(baskanKarakterDuzelt(`Firma / Marka: suRFace 3D`), 14, 26);
+    doc.text(baskanKaraketDuzelt(`Firma / Marka: suRFace 3D`), 14, 26);
     doc.text(baskanKarakterDuzelt(`Musteri / Firma: ${document.getElementById('outMusteri').innerText}`), 14, 32);
     doc.text(baskanKarakterDuzelt(`Gecerlilik Suresi: ${document.getElementById('outSure').innerText}`), 14, 38);
     doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 44);
