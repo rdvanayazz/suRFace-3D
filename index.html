@@ -13,7 +13,8 @@ body{font-family:Arial, sans-serif;margin:0;background:#f4f4f4;transition:.3s;pa
 .top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px}
 .top h2 { margin: 0; font-size: 20px; }
 button{padding:6px 10px;margin:3px 0;width:100%;cursor:pointer;border-radius:4px;border:1px solid #ccc;font-weight:bold;font-size:13px;}
-input,select{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-size:13px;border-radius:4px;border:1px solid #ccc;}
+input,select,textarea{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-size:13px;border-radius:4px;border:1px solid #ccc;font-family:Arial, sans-serif;}
+textarea{resize:vertical;min-height:40px;}
 .card{background:#fff;margin:8px;padding:12px;border-radius:8px;box-shadow: 0 1px 4px rgba(0,0,0,0.1);}
 .dark .card{background:#1e1e1e;box-shadow: 0 1px 4px rgba(255,255,255,0.05);}
 .nav{display:flex;gap:4px;padding:0 8px;}
@@ -214,6 +215,12 @@ input,select{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-
             <input id="tekKdv" type="number" value="20">
         </div>
     </div>
+    <div class="flex-row" style="margin-top: 5px;">
+        <div style="width: 100%;">
+            <span class="sub-label">Teklif Notu (PDF'de Görünür - Ekstra * koyarsanız o satır kırmızı yazılır)</span>
+            <textarea id="teklifNotu" placeholder="Teklif notunu yazın..." oninput="teklifNotuGuncellendi(this.value)"></textarea>
+        </div>
+    </div>
     
     <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 4px;">
         <label class="checkbox-row">
@@ -252,6 +259,7 @@ input,select{width:100%;padding:6px 8px;margin:3px 0;box-sizing:border-box;font-
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 6px 0;">
         <h4 style="margin:4px 0;"><b>Genel Toplam:</b> <span id="outGenel"></span> ₺</h4>
         <p class="small"><b>Geçerlilik Süresi:</b> <span id="outSure"></span></p>
+        <div style="margin:5px 0; font-size:12px; display:none;" id="outTeklifNotuAlani"><b>Teklif Notu:</b><div id="outTeklifNotu" style="margin-top:3px;"></div></div>
     </div>
     <button style="background:#e0a800; color:#fff; margin-top: 8px;" onclick="indirPDF()">PDF Olarak İndir</button>
 </div>
@@ -297,6 +305,7 @@ let kayitliStandartFiyat = localStorage.getItem('l3d_standart_fiyat') ? parseFlo
 
 let sonHesap = null;
 let faturayaEklenenSiparisler = [];
+let teklifNotuElleDegisti = false; 
 
 // Sabit/Gömülü Standart Filament Nesnesi
 const standartFilament = {
@@ -322,6 +331,37 @@ function tasiMusteriAdini() {
     const teklifMusteri = document.getElementById('tekMusteri');
     if (maliyetMusteri && teklifMusteri && maliyetMusteri.value.trim() !== "") {
         teklifMusteri.value = maliyetMusteri.value.trim();
+    }
+}
+
+function tasiNotu() {
+    if (!teklifNotuElleDegisti) {
+        const maliyetNotuEl = document.getElementById('maliyetNotu');
+        const teklifNotuEl = document.getElementById('teklifNotu');
+        if (maliyetNotuEl && teklifNotuEl) {
+            teklifNotuEl.value = maliyetNotuEl.value;
+        }
+    }
+}
+
+function guncelleTeklifNotuOtomatik(val) {
+    if (!teklifNotuElleDegisti) {
+        const teklifNotuEl = document.getElementById('teklifNotu');
+        if (teklifNotuEl) {
+            teklifNotuEl.value = val;
+        }
+    }
+}
+
+function teklifNotuGuncellendi(val) {
+    if (val.trim() === "") {
+        teklifNotuElleDegisti = false;
+        const maliyetNotuEl = document.getElementById('maliyetNotu');
+        if (maliyetNotuEl) {
+            document.getElementById('teklifNotu').value = maliyetNotuEl.value;
+        }
+    } else {
+        teklifNotuElleDegisti = true;
     }
 }
 
@@ -380,13 +420,11 @@ function manuelFiyatGuncelle() {
     
     document.getElementById('outToplamSatisYazi').innerText = yeniToplamSatis;
     document.getElementById('outBirimSatisYazi').innerText = birimFiyat;
-    
     if (sonHesap) {
         sonHesap.karliBirimFiyatKdvHaric = birimFiyat;
         sonHesap.toplamSatisKdvHaric = yeniToplamSatis;
-        
         if (sonHesap.netMaliyetTek > 0) {
-            const yeniKarOrani = ((birimFiyat - sonHesap.netMaliyetTek) / sonHesap.netMaliyetTek) * 100;
+            const yeniKarOrani = ((birimFiyat - (sonHesap.toplamUretimMaliyeti / adet)) / (sonHesap.toplamUretimMaliyeti / adet)) * 100;
             sonHesap.karOrani = yeniKarOrani.toFixed(1);
             document.getElementById('dinamikKarYazi').innerText = yeniKarOrani.toFixed(1);
         } else {
@@ -400,6 +438,7 @@ function manuelFiyatGuncelle() {
 function show(sec) {
     if (sec === 'teklif') {
         tasiMusteriAdini();
+        tasiNotu();
     }
     document.querySelectorAll('.card').forEach(c => c.style.display = 'none');
     document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active-nav'));
@@ -516,12 +555,11 @@ function hesapla(forceRecalc = false) {
     const giderTutari = parseFloat(document.getElementById('gider_tutari').value) || 0;
     const kargo = parseFloat(document.getElementById('kargo').value) || 0;
     const karOrani = parseFloat(document.getElementById('kar_orani').value) || 0;
+    
     let filamentTabloSatirlari = "";
     let secilenFilamentler = [];
     
-    let toplamUretimMaliyetiTekYuv = 0;
     let toplamUretimMaliyetiToplamYuv = 0;
-
     const rows = document.querySelectorAll('#filament-container .filament-row');
     if(rows.length === 0) {
         alert("Lütfen en az bir adet filament tüketim satırı ekleyin.");
@@ -542,66 +580,48 @@ function hesapla(forceRecalc = false) {
         if (!fStok) continue;
         const gramMaliyeti = fStok.fiyat / 1000;
         
-        // 1. MALZEME NET GİDERİ HESABI (Tekil Ham -> Yuvarlanmış)
+        // MALZEME NET GİDERİ HESABI
         const safMaliyetTekHam = tekGram * gramMaliyeti;
-        const safMaliyetTekYuv = yuvarlaBesKatina(safMaliyetTekHam);
-        const safMaliyetFarkTek = safMaliyetTekYuv - safMaliyetTekHam;
-
-        // Toplam Sütunu İçin: Yuvarlamadan Çarpıp Sonra Yuvarlama Kuralı
         const safMaliyetToplamHam = safMaliyetTekHam * adet;
         const safMaliyetToplamYuv = yuvarlaBesKatina(safMaliyetToplamHam);
         const safMaliyetFarkToplam = safMaliyetToplamYuv - safMaliyetToplamHam;
-
-        // 2. FİRE PAYI GİDERİ HESABI (Tekil Ham -> Yuvarlanmış)
+        
+        // FİRE PAYI GİDERİ HESABI
         const fireGramTek = tekGram * (fireOrani / 100);
         const fireMaliyetiTekHam = fireGramTek * gramMaliyeti;
-        const fireMaliyetiTekYuv = yuvarlaBesKatina(fireMaliyetiTekHam);
-        const fireMaliyetiFarkTek = fireMaliyetiTekYuv - fireMaliyetiTekHam;
-
-        // Toplam Sütunu İçin: Yuvarlamadan Çarpıp Sonra Yuvarlama Kuralı
         const fireMaliyetiToplamHam = fireMaliyetiTekHam * adet;
         const fireMaliyetiToplamYuv = yuvarlaBesKatina(fireMaliyetiToplamHam);
         const fireMaliyetiFarkToplam = fireMaliyetiToplamYuv - fireMaliyetiToplamHam;
 
-        toplamUretimMaliyetiTekYuv += (safMaliyetTekYuv + fireMaliyetiTekYuv);
         toplamUretimMaliyetiToplamYuv += (safMaliyetToplamYuv + fireMaliyetiToplamYuv);
-
+        
         filamentTabloSatirlari += `
             <tr style="font-weight: bold; background: #fafafa;">
-                <td>Malzeme Net Tüketim: ${fStok.renk} (${tekGram}g)</td>
-                <td>${safMaliyetTekYuv} ₺</td>
+                <td>Malzeme Net Tüketim: ${fStok.renk} (${(tekGram * adet).toFixed(1)}g)</td>
                 <td>${safMaliyetToplamYuv} ₺</td>
             </tr>
             <tr style="color: #6c757d; font-style: italic;">
                 <td>└ Ham Hesaplanan / Üst Fark</td>
-                <td>${safMaliyetTekHam.toFixed(2)} ₺ / +${safMaliyetFarkTek.toFixed(2)} ₺</td>
                 <td>${safMaliyetToplamHam.toFixed(2)} ₺ / +${safMaliyetFarkToplam.toFixed(2)} ₺</td>
             </tr>
             <tr style="font-weight: bold; background: #fafafa; color: #bc6c25;">
-                <td>└ %${fireOrani} Fire Payı (${fireGramTek.toFixed(1)}g)</td>
-                <td>${fireMaliyetiTekYuv} ₺</td>
+                <td>└ %${fireOrani} Fire Payı (${(fireGramTek * adet).toFixed(1)}g)</td>
                 <td>${fireMaliyetiToplamYuv} ₺</td>
             </tr>
             <tr style="color: #6c757d; font-style: italic;">
                 <td>└ Ham Hesaplanan / Üst Fark</td>
-                <td>${fireMaliyetiTekHam.toFixed(2)} ₺ / +${fireMaliyetiFarkTek.toFixed(2)} ₺</td>
                 <td>${fireMaliyetiToplamHam.toFixed(2)} ₺ / +${fireMaliyetiFarkToplam.toFixed(2)} ₺</td>
             </tr>
         `;
+        
         secilenFilamentler.push({
             stockId: stockId,
             renk: fStok.renk,
             tekGram: tekGram,
-            safMaliyetTekYuv: safMaliyetTekYuv,
-            safMaliyetTekHam: safMaliyetTekHam,
-            safMaliyetFarkTek: safMaliyetFarkTek,
             safMaliyetToplamYuv: safMaliyetToplamYuv,
             safMaliyetToplamHam: safMaliyetToplamHam,
             safMaliyetFarkToplam: safMaliyetFarkToplam,
             fireGramTek: fireGramTek,
-            fireMaliyetiTekYuv: fireMaliyetiTekYuv,
-            fireMaliyetiTekHam: fireMaliyetiTekHam,
-            fireMaliyetiFarkTek: fireMaliyetiFarkTek,
             fireMaliyetiToplamYuv: fireMaliyetiToplamYuv,
             fireMaliyetiToplamHam: fireMaliyetiToplamHam,
             fireMaliyetiFarkToplam: fireMaliyetiFarkToplam,
@@ -609,38 +629,26 @@ function hesapla(forceRecalc = false) {
         });
     }
 
-    // 3. ELEKTRİK GİDERİ HESABI
+    // ELEKTRİK GİDERİ HESABI
     const elektrikMaliyetiTekHam = (watt / 1000) * toplamSaat * elektrikBirim;
-    const elektrikMaliyetiTekYuv = yuvarlaBesKatina(elektrikMaliyetiTekHam);
-    const elektrikFarkTek = elektrikMaliyetiTekYuv - elektrikMaliyetiTekHam;
-
     const elektrikMaliyetiToplamHam = elektrikMaliyetiTekHam * adet;
     const elektrikMaliyetiToplamYuv = yuvarlaBesKatina(elektrikMaliyetiToplamHam);
     const elektrikFarkToplam = elektrikMaliyetiToplamYuv - elektrikMaliyetiToplamHam;
 
-    // 4. AMORTİSMAN GİDERİ HESABI
+    // AMORTİSMAN GİDERİ HESABI
     const amortismanMaliyetiTekHam = toplamSaat * amortismanBirim;
-    const amortismanMaliyetiTekYuv = yuvarlaBesKatina(amortismanMaliyetiTekHam);
-    const amortismanFarkTek = amortismanMaliyetiTekYuv - amortismanMaliyetiTekHam;
-
     const amortismanMaliyetiToplamHam = amortismanMaliyetiTekHam * adet;
     const amortismanMaliyetiToplamYuv = yuvarlaBesKatina(amortismanMaliyetiToplamHam);
     const amortismanFarkToplam = amortismanMaliyetiToplamYuv - amortismanMaliyetiToplamHam;
 
-    // 5. İŞÇİLİK / EKSTRA GİDER HESABI
+    // İŞÇİLİK / EKSTRA GİDER HESABI
     const giderTutariTekHam = giderTutari;
-    const giderTutariTekYuv = yuvarlaBesKatina(giderTutariTekHam);
-    const giderFarkTek = giderTutariTekYuv - giderTutariTekHam;
-
     const giderTutariToplamHam = giderTutariTekHam * adet;
     const giderTutariToplamYuv = yuvarlaBesKatina(giderTutariToplamHam);
     const giderFarkToplam = giderTutariToplamYuv - giderTutariToplamHam;
 
     // Sütun Toplamlarının Belirlenmesi
-    toplamUretimMaliyetiTekYuv += (elektrikMaliyetiTekYuv + amortismanMaliyetiTekYuv + giderTutariTekYuv);
     toplamUretimMaliyetiToplamYuv += (elektrikMaliyetiToplamYuv + amortismanMaliyetiToplamYuv + giderTutariToplamYuv);
-
-    const yuvarlanmisNetMaliyetTek = toplamUretimMaliyetiTekYuv;
     const yuvarlanmisToplamUretimMaliyeti = toplamUretimMaliyetiToplamYuv;
 
     const kontrolKutusu = document.getElementById('manuelFiyatKontrol');
@@ -649,18 +657,22 @@ function hesapla(forceRecalc = false) {
     
     if (kontrolKutusu && kontrolKutusu.checked && !forceRecalc) {
         yuvarlanmisBirimSatis = parseFloat(document.getElementById('manuelBirimSatisInput').value) || 0;
-        if (yuvarlanmisNetMaliyetTek > 0) {
-            gorunurKarOrani = ((yuvarlanmisBirimSatis - yuvarlanmisNetMaliyetTek) / yuvarlanmisNetMaliyetTek) * 100;
+        if (yuvarlanmisToplamUretimMaliyeti > 0) {
+            gorunurKarOrani = ((yuvarlanmisBirimSatis - (yuvarlanmisToplamUretimMaliyeti / adet)) / (yuvarlanmisToplamUretimMaliyeti / adet)) * 100;
             gorunurKarOrani = gorunurKarOrani.toFixed(1);
         } else {
             gorunurKarOrani = 0;
         }
     } else {
-        const karliBirimFiyatKdvHaricHam = yuvarlanmisNetMaliyetTek * (1 + (karOrani / 100));
+        const karliBirimFiyatKdvHaricHam = (yuvarlanmisToplamUretimMaliyeti / adet) * (1 + (karOrani / 100));
         yuvarlanmisBirimSatis = yuvarlaBesKatina(karliBirimFiyatKdvHaricHam);
     }
     
     const yuvarlanmisToplamSatisKdvHaric = (yuvarlanmisBirimSatis * adet) + kargo;
+    
+    const eskiMusteri = document.getElementById('maliyetMusteriAdi') ? document.getElementById('maliyetMusteriAdi').value : "";
+    const eskiNot = document.getElementById('maliyetNotu') ? document.getElementById('maliyetNotu').value : "";
+    
     sonHesap = {
         urunAdi,
         adet,
@@ -668,102 +680,83 @@ function hesapla(forceRecalc = false) {
         sureSaat: inputSaat,
         sureDakika: inputDakika,
         watt,
-        elektrikMaliyetiTekYuv,
-        elektrikMaliyetiTekHam,
-        elektrikFarkTek,
         elektrikMaliyetiToplamYuv,
         elektrikMaliyetiToplamHam,
         elektrikFarkToplam,
-        amortismanMaliyetiTekYuv,
-        amortismanMaliyetiTekHam,
-        amortismanFarkTek,
         amortismanMaliyetiToplamYuv,
         amortismanMaliyetiToplamHam,
         amortismanFarkToplam,
         giderTuru,
-        giderTutariTekYuv,
-        giderTutariTekHam,
-        giderFarkTek,
         giderTutariToplamYuv,
         giderTutariToplamHam,
         giderFarkToplam,
         kargo,
         karOrani: gorunurKarOrani,
-        netMaliyetTek: yuvarlanmisNetMaliyetTek,
+        netMaliyetTek: (yuvarlanmisToplamUretimMaliyeti / adet),
         toplamUretimMaliyeti: yuvarlanmisToplamUretimMaliyeti,
         genelMaliyetKargoDahil: yuvarlaBesKatina(yuvarlanmisToplamUretimMaliyeti + kargo),
         karliBirimFiyatKdvHaric: yuvarlanmisBirimSatis,
-        toplamSatisKdvHaric: yuvarlanmisToplamSatisKdvHaric
+        toplamSatisKdvHaric: yuvarlanmisToplamSatisKdvHaric,
+        maliyetNotu: eskiNot
     };
-    
-    const eskiMusteri = document.getElementById('maliyetMusteriAdi') ? document.getElementById('maliyetMusteriAdi').value : "";
     
     document.getElementById('res').innerHTML = `
         <div style="border-top:1px solid #ccc; padding-top:8px; margin-top:10px; font-weight:normal;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin: 6px 0; gap:8px; flex-wrap:wrap;">
-                <h4 style="margin: 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu (Toplam Sütunu Sonradan Yuvarlanır)</h4>
-                <div class="flex-row" style="gap:4px;">
+                <h4 style="margin: 0; color:#007bff; font-size:14px;">Maliyet Kırılım Tablosu</h4>
+                <div class="flex-row" style="gap:4px; flex-wrap: wrap; width:100%;">
                     <input id="maliyetMusteriAdi" placeholder="Müşteri Adı (Opsiyonel)" value="${eskiMusteri}" style="max-width:140px; padding:3px 6px; margin:0; font-size:11px;">
-                    <button onclick="indirMaliyetPDF()" style="width:auto; background:#17a2b8; color:#fff; font-size:12px; padding:4px 8px; margin:0;">📊 Raporu İndir</button>
+                    <textarea id="maliyetNotu" placeholder="Rapor Notu (Opsiyonel - Ekstra * koyarsanız o satır kırmızı yazılır)" style="flex:1; padding:3px 6px; margin:0; font-size:11px; min-height:30px;" oninput="sonHesap.maliyetNotu = this.value; guncelleTeklifNotuOtomatik(this.value);">${eskiNot}</textarea>
+                    <button onclick="indirMaliyetPDF()" style="width:auto; background:#17a2b8; color:#fff; font-size:12px; padding:4px 8px; margin:0; height:30px;">📊 Raporu İndir</button>
                 </div>
             </div>
             <table class="maliyet-tablo">
                 <thead>
                     <tr>
                         <th>Gider Kalemi</th>
-                        <th>1 Adet</th>
-                        <th>Toplam (${adet} Adet)</th>
+                        <th>Toplam Tutar (₺)</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${filamentTabloSatirlari}
                     
                     <tr style="font-weight: bold; background: #fafafa;">
-                        <td>Elektrik (${inputSaat}sa ${inputDakika}dk / ${watt}W)</td>
-                        <td>${elektrikMaliyetiTekYuv} ₺</td>
+                        <td>Elektrik (${(inputSaat * adet).toFixed(1)}sa ${(inputDakika * adet).toFixed(1)}dk / ${watt}W)</td>
                         <td>${elektrikMaliyetiToplamYuv} ₺</td>
                     </tr>
                     <tr style="color: #6c757d; font-style: italic;">
                         <td>└ Ham Hesaplanan / Üst Fark</td>
-                        <td>${elektrikMaliyetiTekHam.toFixed(2)} ₺ / +${elektrikFarkTek.toFixed(2)} ₺</td>
                         <td>${elektrikMaliyetiToplamHam.toFixed(2)} ₺ / +${elektrikFarkToplam.toFixed(2)} ₺</td>
                     </tr>
 
                     <tr style="font-weight: bold; background: #fafafa;">
                         <td>Yazıcı Amortisman Payı</td>
-                        <td>${amortismanMaliyetiTekYuv} ₺</td>
                         <td>${amortismanMaliyetiToplamYuv} ₺</td>
                     </tr>
                     <tr style="color: #6c757d; font-style: italic;">
                         <td>└ Ham Hesaplanan / Üst Fark</td>
-                        <td>${amortismanMaliyetiTekHam.toFixed(2)} ₺ / +${amortismanFarkTek.toFixed(2)} ₺</td>
                         <td>${amortismanMaliyetiToplamHam.toFixed(2)} ₺ / +${amortismanFarkToplam.toFixed(2)} ₺</td>
                     </tr>
 
                     <tr style="font-weight: bold; background: #fafafa;">
                         <td>${giderTuru}</td>
-                        <td>${giderTutariTekYuv} ₺</td>
                         <td>${giderTutariToplamYuv} ₺</td>
                     </tr>
                     <tr style="color: #6c757d; font-style: italic;">
                         <td>└ Ham Hesaplanan / Üst Fark</td>
-                        <td>${giderTutariTekHam.toFixed(2)} ₺ / +${giderFarkTek.toFixed(2)} ₺</td>
                         <td>${giderTutariToplamHam.toFixed(2)} ₺ / +${giderFarkToplam.toFixed(2)} ₺</td>
                     </tr>
 
                     <tr class="toplam-satir" style="background: #e9ecef;">
-                        <td>Net Üretim Gideri (Toplam Yuvarlanmış)</td>
-                        <td>${yuvarlanmisNetMaliyetTek} ₺</td>
+                        <td>Net Üretim Gideri (Yuvarlanmış)</td>
                         <td>${yuvarlanmisToplamUretimMaliyeti} ₺</td>
                     </tr>
                     <tr>
                         <td>Kargo Ücreti</td>
-                        <td>${(kargo / adet).toFixed(2)} ₺</td>
                         <td>${kargo.toFixed(2)} ₺</td>
                     </tr>
                     <tr class="toplam-satir" style="background:#d1ecf1; color:#0c5460;">
                         <td>Kargo Dahil Genel Maliyet</td>
-                        <td>${yuvarlaBesKatina(yuvarlanmisNetMaliyetTek + (kargo / adet))} ₺</td>
                         <td>${yuvarlaBesKatina(yuvarlanmisToplamUretimMaliyeti + kargo)} ₺</td>
                     </tr>
                 </tbody>
@@ -802,6 +795,7 @@ function indirMaliyetPDF() {
 
     const mInput = document.getElementById('maliyetMusteriAdi');
     const musteriAdi = mInput ? mInput.value.trim() : "";
+    const maliyetNotu = document.getElementById('maliyetNotu') ? document.getElementById('maliyetNotu').value.trim() : "";
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -823,48 +817,43 @@ function indirMaliyetPDF() {
     currentY += 6;
     doc.text(baskanKarakterDuzelt(`Adet: ${data.adet}`), 14, currentY);
     currentY += 6;
-    doc.text(baskanKarakterDuzelt(`Uretim Suresi: ${data.sureSaat}sa ${data.sureDakika}dk`), 14, currentY);
+    doc.text(baskanKarakterDuzelt(`Uretim Suresi (Urun Basi): ${data.sureSaat}sa ${data.sureDakika}dk`), 14, currentY);
     currentY += 6;
     doc.text(baskanKarakterDuzelt(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}`), 14, currentY);
 
     let y = currentY + 10;
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt("Gider Kalemi"), 14, y);
-    doc.text(baskanKarakterDuzelt("1 Adet (TL)"), 120, y);
-    doc.text(baskanKarakterDuzelt(`Toplam [${data.adet} Adet] (TL)`), 160, y);
+    doc.text(baskanKarakterDuzelt(`Toplam Tutar [${data.adet} Adet] (TL)`), 140, y);
     doc.line(14, y + 2, 196, y + 2);
     y += 8;
 
     // Filamentler listeleniyor
     data.secilenFilamentler.forEach(f => {
         doc.setFont("Helvetica", "bold");
-        doc.text(baskanKarakterDuzelt(`Malzeme Net [${f.renk}] (${f.tekGram}g)`), 14, y);
-        doc.text(`${f.safMaliyetTekYuv}`, 120, y);
-        doc.text(`${f.safMaliyetToplamYuv}`, 160, y);
+        doc.text(baskanKarakterDuzelt(`Malzeme Net [${f.renk}] (${(f.tekGram * data.adet).toFixed(1)}g)`), 14, y);
+        doc.text(`${f.safMaliyetToplamYuv}`, 140, y);
         y += 5;
         
         doc.setFont("Helvetica", "oblique");
         doc.setFontSize(9);
         doc.setTextColor(110, 110, 110);
         doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-        doc.text(`${f.safMaliyetTekHam.toFixed(2)} / +${f.safMaliyetFarkTek.toFixed(2)}`, 120, y);
-        doc.text(`${f.safMaliyetToplamHam.toFixed(2)} / +${f.safMaliyetFarkToplam.toFixed(2)}`, 160, y);
+        doc.text(`${f.safMaliyetToplamHam.toFixed(2)} / +${f.safMaliyetFarkToplam.toFixed(2)}`, 140, y);
         y += 6;
         
         doc.setFontSize(11);
-        doc.setTextColor(188, 108, 37); // fire rengi
+        doc.setTextColor(188, 108, 37); 
         doc.setFont("Helvetica", "bold");
-        doc.text(baskanKarakterDuzelt(`   > Fire Payi (${f.fireGramTek.toFixed(1)}g)`), 14, y);
-        doc.text(`${f.fireMaliyetiTekYuv}`, 120, y);
-        doc.text(`${f.fireMaliyetiToplamYuv}`, 160, y);
+        doc.text(baskanKarakterDuzelt(`   > Fire Payi (${(f.fireGramTek * data.adet).toFixed(1)}g)`), 14, y);
+        doc.text(`${f.fireMaliyetiToplamYuv}`, 140, y);
         y += 5;
 
         doc.setFont("Helvetica", "oblique");
         doc.setFontSize(9);
         doc.setTextColor(110, 110, 110);
         doc.text(baskanKarakterDuzelt(`    Ham Hesap / Ust Fark:`), 14, y);
-        doc.text(`${f.fireMaliyetiTekHam.toFixed(2)} / +${f.fireMaliyetiFarkTek.toFixed(2)}`, 120, y);
-        doc.text(`${f.fireMaliyetiToplamHam.toFixed(2)} / +${f.fireMaliyetiFarkToplam.toFixed(2)}`, 160, y);
+        doc.text(`${f.fireMaliyetiToplamHam.toFixed(2)} / +${f.fireMaliyetiFarkToplam.toFixed(2)}`, 140, y);
         y += 6;
         doc.setFontSize(11);
         doc.setTextColor(0,0,0);
@@ -873,15 +862,13 @@ function indirMaliyetPDF() {
     // Elektrik
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt(`Elektrik (${data.watt}W)`), 14, y);
-    doc.text(`${data.elektrikMaliyetiTekYuv}`, 120, y);
-    doc.text(`${data.elektrikMaliyetiToplamYuv}`, 160, y);
+    doc.text(`${data.elektrikMaliyetiToplamYuv}`, 140, y);
     y += 5;
     doc.setFont("Helvetica", "oblique");
     doc.setFontSize(9);
     doc.setTextColor(110, 110, 110);
     doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-    doc.text(`${data.elektrikMaliyetiTekHam.toFixed(2)} / +${data.elektrikFarkTek.toFixed(2)}`, 120, y);
-    doc.text(`${data.elektrikMaliyetiToplamHam.toFixed(2)} / +${data.elektrikFarkToplam.toFixed(2)}`, 160, y);
+    doc.text(`${data.elektrikMaliyetiToplamHam.toFixed(2)} / +${data.elektrikFarkToplam.toFixed(2)}`, 140, y);
     y += 6;
     doc.setFontSize(11);
     doc.setTextColor(0,0,0);
@@ -889,15 +876,13 @@ function indirMaliyetPDF() {
     // Amortisman
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt(`Yazici Amortisman Payi`), 14, y);
-    doc.text(`${data.amortismanMaliyetiTekYuv}`, 120, y);
-    doc.text(`${data.amortismanMaliyetiToplamYuv}`, 160, y);
+    doc.text(`${data.amortismanMaliyetiToplamYuv}`, 140, y);
     y += 5;
     doc.setFont("Helvetica", "oblique");
     doc.setFontSize(9);
     doc.setTextColor(110, 110, 110);
     doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-    doc.text(`${data.amortismanMaliyetiTekHam.toFixed(2)} / +${data.amortismanFarkTek.toFixed(2)}`, 120, y);
-    doc.text(`${data.amortismanMaliyetiToplamHam.toFixed(2)} / +${data.amortismanFarkToplam.toFixed(2)}`, 160, y);
+    doc.text(`${data.amortismanMaliyetiToplamHam.toFixed(2)} / +${data.amortismanFarkToplam.toFixed(2)}`, 140, y);
     y += 6;
     doc.setFontSize(11);
     doc.setTextColor(0,0,0);
@@ -905,15 +890,13 @@ function indirMaliyetPDF() {
     // Ekstra Gider
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt(`${data.giderTuru}`), 14, y);
-    doc.text(`${data.giderTutariTekYuv}`, 120, y);
-    doc.text(`${data.giderTutariToplamYuv}`, 160, y);
+    doc.text(`${data.giderTutariToplamYuv}`, 140, y);
     y += 5;
     doc.setFont("Helvetica", "oblique");
     doc.setFontSize(9);
     doc.setTextColor(110, 110, 110);
     doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-    doc.text(`${data.giderTutariTekHam.toFixed(2)} / +${data.giderFarkTek.toFixed(2)}`, 120, y);
-    doc.text(`${data.giderTutariToplamHam.toFixed(2)} / +${data.giderFarkToplam.toFixed(2)}`, 160, y);
+    doc.text(`${data.giderTutariToplamHam.toFixed(2)} / +${data.giderFarkToplam.toFixed(2)}`, 140, y);
     y += 6;
     doc.setFontSize(11);
     doc.setTextColor(0,0,0);
@@ -924,21 +907,18 @@ function indirMaliyetPDF() {
     // Özet satırları
     doc.setFont("Helvetica", "bold");
     doc.text(baskanKarakterDuzelt("Net Uretim Gideri (Yuvarlanmis):"), 14, y);
-    doc.text(`${data.netMaliyetTek} TL`, 120, y);
-    doc.text(`${data.toplamUretimMaliyeti} TL`, 160, y);
+    doc.text(`${data.toplamUretimMaliyeti} TL`, 140, y);
     y += 6;
 
     doc.setFont("Helvetica", "normal");
     doc.text(baskanKarakterDuzelt("Kargo Ucreti:"), 14, y);
-    doc.text(`${(data.kargo / data.adet).toFixed(2)} TL`, 120, y);
-    doc.text(`${data.kargo.toFixed(2)} TL`, 160, y);
+    doc.text(`${data.kargo.toFixed(2)} TL`, 140, y);
     y += 6;
 
     doc.setFont("Helvetica", "bold");
     doc.setTextColor(12, 84, 96);
     doc.text(baskanKarakterDuzelt("Kargo Dahil Genel Maliyet:"), 14, y);
-    doc.text(`${yuvarlaBesKatina(data.netMaliyetTek + (data.kargo / data.adet))} TL`, 120, y);
-    doc.text(`${data.genelMaliyetKargoDahil} TL`, 160, y);
+    doc.text(`${data.genelMaliyetKargoDahil} TL`, 140, y);
     y += 8;
 
     doc.line(14, y, 196, y);
@@ -951,6 +931,38 @@ function indirMaliyetPDF() {
     y += 6;
     doc.setFontSize(13);
     doc.text(baskanKarakterDuzelt(`NIHAI TOPLAM SATIS (KDV Haric): ${data.toplamSatisKdvHaric} TL`), 14, y);
+    
+    // Çoklu satır desteği ile Rapor Notu yazdırma
+    if (maliyetNotu !== "") {
+        y += 12;
+        doc.setFontSize(11);
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text(baskanKarakterDuzelt("Rapor Notu:"), 14, y);
+        y += 6;
+        
+        let splitMaliyetNotLines = maliyetNotu.split('\n');
+        splitMaliyetNotLines.forEach(rawLine => {
+            if (rawLine.trim() === "") return;
+            let isRed = rawLine.includes('*');
+            let formattedLine = "* " + rawLine;
+            
+            if (isRed) {
+                doc.setTextColor(220, 53, 69);
+                doc.setFont("Helvetica", "bold");
+            } else {
+                doc.setTextColor(100, 100, 100);
+                doc.setFont("Helvetica", "italic");
+            }
+            
+            let linesText = doc.splitTextToSize(baskanKarakterDuzelt(formattedLine), 180);
+            linesText.forEach(line => {
+                if (y > 280) { doc.addPage(); y = 20; }
+                doc.text(line, 14, y);
+                y += 5;
+            });
+        });
+    }
 
     const dosyaAdi = musteriAdi !== "" ? `Maliyet_${musteriAdi.replace(/\s+/g, '_')}_${data.urunAdi.replace(/\s+/g, '_')}` : `Maliyet_Raporu_${data.urunAdi.replace(/\s+/g, '_')}`;
     doc.save(`${dosyaAdi}.pdf`);
@@ -1108,6 +1120,7 @@ function teklifOlustur() {
     const kdvUygula = document.getElementById('tekKdvUygula').checked;
     const kdvOran = kdvUygula ? (parseFloat(document.getElementById('tekKdv').value) || 0) : 0;
     const sureGosterilsinMi = document.getElementById('tekSureGoster').checked;
+    const teklifNotu = document.getElementById('teklifNotu').value.trim();
 
     let araToplam = 0;
     const govde = document.getElementById('outUrunlerGövde');
@@ -1152,6 +1165,27 @@ function teklifOlustur() {
         kdvSatiri.style.display = "none";
     }
     
+    // Teklif Notu Alanı Önizlemesi (Otomatik Mermi Noktası ve Renklendirme Mantığı)
+    const notAlani = document.getElementById('outTeklifNotuAlani');
+    if (teklifNotu !== "") {
+        let htmlNot = "";
+        let splitTeklifLines = teklifNotu.split('\n');
+        splitTeklifLines.forEach(line => {
+            if (line.trim() === "") return;
+            let isRed = line.includes('*');
+            let processedLine = "* " + line;
+            if (isRed) {
+                htmlNot += `<div style="color:#dc3545; font-weight:bold; font-style:normal; margin-bottom:2px;">${processedLine}</div>`;
+            } else {
+                htmlNot += `<div style="color:#555; font-style:italic; margin-bottom:2px;">${processedLine}</div>`;
+            }
+        });
+        document.getElementById('outTeklifNotu').innerHTML = htmlNot;
+        notAlani.style.display = "block";
+    } else {
+        notAlani.style.display = "none";
+    }
+    
     document.getElementById('outGenel').innerText = Math.ceil(genelToplam);
     document.getElementById('outSure').innerText = sure;
     document.getElementById('teklifGosterim').style.display = 'block';
@@ -1162,6 +1196,7 @@ function indirPDF() {
     const doc = new jsPDF();
     const sureGosterilsinMi = document.getElementById('tekSureGoster').checked;
     const kdvUygula = document.getElementById('tekKdvUygula').checked;
+    const teklifNotu = document.getElementById('teklifNotu').value.trim();
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(18);
@@ -1169,7 +1204,7 @@ function indirPDF() {
 
     doc.setFontSize(11);
     doc.setFont("Helvetica", "normal");
-    doc.text(baskanKaraketDuzelt(`Firma / Marka: suRFace 3D`), 14, 26);
+    doc.text(baskanKarakterDuzelt(`Firma / Marka: suRFace 3D`), 14, 26);
     doc.text(baskanKarakterDuzelt(`Musteri / Firma: ${document.getElementById('outMusteri').innerText}`), 14, 32);
     doc.text(baskanKarakterDuzelt(`Gecerlilik Suresi: ${document.getElementById('outSure').innerText}`), 14, 38);
     doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 44);
@@ -1227,6 +1262,40 @@ function indirPDF() {
     doc.setFontSize(13);
     doc.text(`GENEL TOPLAM:`, 120, y);
     doc.text(`${document.getElementById('outGenel').innerText} TL`, 170, y);
+
+    // Çoklu satır desteği ile Teklif Notu PDF'e ekleniyor
+    if (teklifNotu !== "") {
+        y += 12;
+        doc.setFontSize(11);
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text(baskanKarakterDuzelt("Not:"), 14, y);
+        y += 6;
+        
+        let splitTeklifNotLines = teklifNotu.split('\n');
+        splitTeklifNotLines.forEach(rawLine => {
+            if (rawLine.trim() === "") return;
+            let isRed = rawLine.includes('*');
+            let formattedLine = "* " + rawLine;
+            
+            if (isRed) {
+                doc.setTextColor(220, 53, 69);
+                doc.setFont("Helvetica", "bold");
+            } else {
+                doc.setTextColor(100, 100, 100);
+                doc.setFont("Helvetica", "italic");
+            }
+            
+            let linesText = doc.splitTextToSize(baskanKarakterDuzelt(formattedLine), 180);
+            linesText.forEach(line => {
+                if (y > 280) { doc.addPage(); y = 20; }
+                doc.text(line, 14, y);
+                y += 5;
+            });
+        });
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("Helvetica", "normal");
+    }
 
     doc.save("suRFace_3D_Fiyat_Teklif_Formu.pdf");
 }
