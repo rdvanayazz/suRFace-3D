@@ -322,6 +322,12 @@ button{font-family:inherit;}
 .note-red{color:var(--danger);font-weight:700;margin-bottom:3px;}
 .note-normal{color:var(--muted);font-style:italic;margin-bottom:3px;}
 
+/* ================= BİLDİRİM ================= */
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;z-index:50;
+  background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;
+  box-shadow:var(--shadow);transition:.25s;max-width:calc(100% - 32px);text-align:center;}
+.toast.show{opacity:1;transform:translate(-50%,0);}
+
 /* ================= MOBİL ================= */
 @media (max-width:560px){
   .card{padding:14px;}
@@ -1123,8 +1129,306 @@ function hesapla(forceRecalc = false) {
     return sonHesap;
 }
 
+// =====================================================================
+// --- PDF ALTYAPISI (Türkçe karakter destekli Roboto fontu) ---
+// Font internetten bir kez indirilir ve oturum boyunca hafızada tutulur.
+// Bağlantı yoksa standart fonta geçilir ve Türkçe harfler sadeleştirilir
+// (ş→s, ğ→g ...) ki PDF'te bozuk/anlamsız karakter çıkmasın.
+// =====================================================================
+const PDF_FONT_URL = {
+    normal: 'https://cdn.jsdelivr.net/gh/googlefonts/roboto@v2.138/src/hinted/Roboto-Regular.ttf',
+    bold: 'https://cdn.jsdelivr.net/gh/googlefonts/roboto@v2.138/src/hinted/Roboto-Bold.ttf'
+};
+let pdfFontVerisi = null;
+
+const PR = {
+    koyu: [30, 27, 75], ana: [79, 70, 229], anaAcik: [238, 242, 255], anaYazi: [199, 210, 254],
+    yazi: [15, 23, 42], soluk: [100, 116, 139], cizgi: [226, 232, 240], zemin: [248, 250, 252],
+    kirmizi: [220, 38, 38], yesil: [5, 150, 105], turuncu: [180, 83, 9],
+    mavi: [14, 116, 144], maviAcik: [236, 254, 255], beyaz: [255, 255, 255]
+};
+
+const TABLO_STIL = {
+    ana:    { boyut: 9.5, kalin: true,  renk: PR.yazi,    ust: 3,   alt: 1 },
+    fire:   { boyut: 9,   kalin: true,  renk: PR.turuncu, ust: 2,   alt: 1,   girinti: 4 },
+    detay:  { boyut: 7.8, kalin: false, renk: PR.soluk,   ust: 0.6, alt: 2.6, girinti: 4 },
+    normal: { boyut: 9.5, kalin: false, renk: PR.yazi,    ust: 3,   alt: 3 },
+    toplam: { boyut: 9.5, kalin: true,  renk: PR.yazi,    ust: 3,   alt: 3,   zemin: PR.zemin },
+    genel:  { boyut: 10,  kalin: true,  renk: PR.mavi,    ust: 3.2, alt: 3.2, zemin: PR.maviAcik },
+    urun:   { boyut: 9.5, kalin: true,  renk: PR.yazi,    ust: 3.4, alt: 3.4 }
+};
+
+const para = n => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' TL';
+const gramYaz = n => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' g';
+const ondalik2 = n => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dosyaAdiTemizle = s => baskanKarakterDuzelt(s).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+
+function bildirim(mesaj) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.innerText = mesaj;
+    document.body.appendChild(el);
+    setTimeout(() => el.classList.add('show'), 10);
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+function arrayBufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+}
+
+async function pdfFontYukle() {
+    if (pdfFontVerisi) return pdfFontVerisi;
+    try {
+        const [n, b] = await Promise.all([PDF_FONT_URL.normal, PDF_FONT_URL.bold].map(u =>
+            fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        ));
+        pdfFontVerisi = { normal: arrayBufferToBase64(n), bold: arrayBufferToBase64(b) };
+        return pdfFontVerisi;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function pdfBaslat() {
+    document.body.style.cursor = 'progress';
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const fontlar = await pdfFontYukle();
+    document.body.style.cursor = '';
+
+    let F = 'helvetica';
+    const unicode = !!fontlar;
+    if (unicode) {
+        doc.addFileToVFS('Roboto-Regular.ttf', fontlar.normal);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.addFileToVFS('Roboto-Bold.ttf', fontlar.bold);
+        doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
+        F = 'Roboto';
+    } else {
+        bildirim('Font indirilemedi (internet yok?). PDF, Türkçe harfler sadeleştirilerek oluşturuldu.');
+    }
+
+    const W = 210, H = 297, M = 14, CW = W - 2 * M, ALT_SINIR = H - 20;
+    const c = { doc, W, H, M, CW, y: 0, unicode };
+
+    c.t = s => unicode ? String(s) : baskanKarakterDuzelt(String(s));
+    c.font = (stil = 'normal', boyut = 10, renk = PR.yazi) => {
+        doc.setFont(F, stil); doc.setFontSize(boyut); doc.setTextColor(...renk);
+    };
+    c.yaz = (s, x, y, opt) => doc.text(c.t(s), x, y, opt);
+    c.bol = (s, w) => doc.splitTextToSize(c.t(s), w);
+    c.buyuk = s => String(s).toLocaleUpperCase('tr-TR');
+    c.yerAc = h => {
+        if (c.y + h > ALT_SINIR) { doc.addPage(); c.y = 18; return true; }
+        return false;
+    };
+
+    // Üst başlık bandı
+    c.baslik = (belgeAdi, sagSatirlar) => {
+        doc.setFillColor(...PR.koyu); doc.rect(0, 0, W, 36, 'F');
+        doc.setFillColor(...PR.ana); doc.rect(0, 36, W, 1.5, 'F');
+
+        doc.setFillColor(...PR.ana); doc.roundedRect(M, 9, 18, 18, 3, 3, 'F');
+        c.font('bold', 11, PR.beyaz); c.yaz('3D', M + 9, 19.9, { align: 'center' });
+
+        c.font('bold', 16, PR.beyaz); c.yaz('suRFace 3D', M + 23, 17);
+        c.font('normal', 8.5, PR.anaYazi); c.yaz('3D Baskı · Tasarım · Üretim', M + 23, 23);
+
+        c.font('bold', 14, PR.beyaz); c.yaz(belgeAdi, W - M, 16.5, { align: 'right' });
+        c.font('normal', 8.5, PR.anaYazi);
+        sagSatirlar.forEach((s, i) => c.yaz(s, W - M, 22.5 + i * 4.6, { align: 'right' }));
+        c.y = 47;
+    };
+
+    // Yan yana bilgi kutuları
+    c.bilgiKutulari = kutular => {
+        const bosluk = 4, n = kutular.length, w = (CW - bosluk * (n - 1)) / n;
+        c.font('bold', 10, PR.yazi);
+        const degerler = kutular.map(b => {
+            const l = c.bol(b.v, w - 8);
+            if (l.length > 2) { l[1] = c.bol(l[1], w - 14)[0] + '...'; }
+            return l.slice(0, 2);
+        });
+        const h = 11 + Math.max(...degerler.map(d => d.length)) * 4.3;
+        kutular.forEach((b, i) => {
+            const x = M + i * (w + bosluk);
+            doc.setFillColor(...PR.zemin); doc.setDrawColor(...PR.cizgi); doc.setLineWidth(0.25);
+            doc.roundedRect(x, c.y, w, h, 2, 2, 'FD');
+            c.font('bold', 6.8, PR.soluk); c.yaz(c.buyuk(b.k), x + 4, c.y + 5.5);
+            c.font('bold', 10, PR.yazi);
+            degerler[i].forEach((l, j) => doc.text(l, x + 4, c.y + 11.3 + j * 4.3));
+        });
+        c.y += h + 9;
+    };
+
+    // Bölüm başlığı
+    c.bolum = s => {
+        c.yerAc(16);
+        c.font('bold', 10.5, PR.yazi); c.yaz(s, M, c.y);
+        doc.setDrawColor(...PR.ana); doc.setLineWidth(0.7);
+        doc.line(M, c.y + 2, M + 12, c.y + 2);
+        doc.setLineWidth(0.25);
+        c.y += 6.5;
+    };
+
+    // Tablo: kolonlar [{ad, w, hiza, normal}], satırlar [{tip, h:[...], alt, cizgiYok}]
+    c.tablo = (kolonlar, satirlar) => {
+        const basH = 8;
+        const basCiz = () => {
+            doc.setFillColor(...PR.anaAcik); doc.rect(M, c.y, CW, basH, 'F');
+            c.font('bold', 7.3, PR.ana);
+            let x = M;
+            kolonlar.forEach(k => {
+                const sag = k.hiza === 'right';
+                c.yaz(c.buyuk(k.ad), sag ? x + k.w - 3 : x + 3, c.y + 5.3, { align: sag ? 'right' : 'left' });
+                x += k.w;
+            });
+            c.y += basH;
+        };
+        c.yerAc(basH + 12);
+        basCiz();
+
+        satirlar.forEach(s => {
+            const st = TABLO_STIL[s.tip || 'normal'];
+            const girinti = st.girinti || 0;
+            const satirAraligi = st.boyut * 0.43;
+
+            c.font(st.kalin ? 'bold' : 'normal', st.boyut, st.renk);
+            const ilk = c.bol(s.h[0], kolonlar[0].w - 6 - girinti);
+            let altSatirlar = [];
+            if (s.alt) { c.font('normal', 7.8, PR.yesil); altSatirlar = c.bol(s.alt, kolonlar[0].w - 6); }
+
+            const satH = st.ust + ilk.length * satirAraligi + altSatirlar.length * 3.6 + st.alt + 1.2;
+            if (c.yerAc(satH)) basCiz();
+
+            if (st.zemin) { doc.setFillColor(...st.zemin); doc.rect(M, c.y, CW, satH, 'F'); }
+            const taban = c.y + st.ust + st.boyut * 0.3;
+
+            c.font(st.kalin ? 'bold' : 'normal', st.boyut, st.renk);
+            ilk.forEach((l, i) => doc.text(l, M + 3 + girinti, taban + i * satirAraligi));
+
+            let x = M + kolonlar[0].w;
+            for (let i = 1; i < kolonlar.length; i++) {
+                const k = kolonlar[i];
+                c.font(st.kalin && !k.normal ? 'bold' : 'normal', st.boyut, st.renk);
+                const sag = k.hiza === 'right';
+                c.yaz(s.h[i] ?? '', sag ? x + k.w - 3 : x + 3, taban, { align: sag ? 'right' : 'left' });
+                x += k.w;
+            }
+
+            if (altSatirlar.length) {
+                c.font('normal', 7.8, PR.yesil);
+                const altBas = taban + (ilk.length - 1) * satirAraligi + 4.2;
+                altSatirlar.forEach((l, i) => doc.text(l, M + 3, altBas + i * 3.6));
+            }
+
+            if (!s.cizgiYok) {
+                doc.setDrawColor(...PR.cizgi); doc.setLineWidth(0.25);
+                doc.line(M, c.y + satH, M + CW, c.y + satH);
+            }
+            c.y += satH;
+        });
+    };
+
+    // Öne çıkan özet kartları
+    c.kpiler = kartlar => {
+        const bosluk = 4, n = kartlar.length, h = 20;
+        const toplamOran = kartlar.reduce((a, b) => a + (b.oran || 1), 0);
+        const kullanilabilir = CW - bosluk * (n - 1);
+        c.yerAc(h + 6);
+        let x = M;
+        kartlar.forEach(b => {
+            const w = kullanilabilir * (b.oran || 1) / toplamOran;
+            if (b.vurgu) {
+                doc.setFillColor(...PR.ana); doc.roundedRect(x, c.y, w, h, 2.5, 2.5, 'F');
+            } else {
+                doc.setFillColor(...PR.zemin); doc.setDrawColor(...PR.cizgi);
+                doc.roundedRect(x, c.y, w, h, 2.5, 2.5, 'FD');
+            }
+            c.font('bold', 6.8, b.vurgu ? PR.anaYazi : PR.soluk); c.yaz(c.buyuk(b.k), x + 4, c.y + 6.5);
+            c.font('bold', b.vurgu ? 15 : 13, b.vurgu ? PR.beyaz : PR.yazi); c.yaz(b.v, x + 4, c.y + 15);
+            x += w + bosluk;
+        });
+        c.y += h + 9;
+    };
+
+    // Toplamlar kutusu (sağa yaslı)
+    c.toplamlar = (satirlar, genel, dipNot) => {
+        const w = 84, x = W - M - w;
+        const h = satirlar.length * 6.5 + 15 + (dipNot ? 6 : 0);
+        c.yerAc(h + 4);
+        let yy = c.y + 3;
+        satirlar.forEach(s => {
+            c.font('normal', 9.5, PR.soluk); c.yaz(s.k, x + 3, yy + 4);
+            c.font('bold', 9.5, s.renk || PR.yazi); c.yaz(s.v, x + w - 3, yy + 4, { align: 'right' });
+            yy += 6.5;
+        });
+        yy += 1.5;
+        doc.setFillColor(...PR.ana); doc.roundedRect(x, yy, w, 11.5, 2, 2, 'F');
+        c.font('bold', 10, PR.beyaz); c.yaz(genel.k, x + 4, yy + 7.4);
+        c.font('bold', 13, PR.beyaz); c.yaz(genel.v, x + w - 4, yy + 7.7, { align: 'right' });
+        yy += 11.5;
+        if (dipNot) {
+            c.font('normal', 7.5, PR.soluk); c.yaz(dipNot, x + w, yy + 4.5, { align: 'right' });
+            yy += 6;
+        }
+        c.y = yy + 9;
+    };
+
+    // Notlar: '*' içeren satırlar kırmızı ve kalın yazılır
+    c.notlar = (baslik, metin) => {
+        const satirlar = metin.split('\n').filter(l => l.trim() !== '');
+        if (!satirlar.length) return;
+        c.bolum(baslik);
+        const madde = unicode ? '•' : '-';
+        satirlar.forEach(l => {
+            const kirmizi = l.includes('*');
+            const renk = kirmizi ? PR.kirmizi : PR.soluk;
+            c.font(kirmizi ? 'bold' : 'normal', 9, renk);
+            const parcalar = c.bol(l.trim(), CW - 10);
+            parcalar.forEach((p, i) => {
+                c.yerAc(5);
+                c.font(kirmizi ? 'bold' : 'normal', 9, renk);
+                doc.setFillColor(...(kirmizi ? PR.kirmizi : PR.ana));
+                doc.rect(M, c.y - 3.3, 0.8, 4.7, 'F');
+                if (i === 0) doc.text(madde, M + 3.2, c.y);
+                doc.text(p, M + 7, c.y);
+                c.y += 4.7;
+            });
+        });
+        c.y += 5;
+    };
+
+    // Altbilgi + kaydet
+    c.bitir = dosyaAdi => {
+        const n = doc.getNumberOfPages();
+        for (let i = 1; i <= n; i++) {
+            doc.setPage(i);
+            doc.setDrawColor(...PR.cizgi); doc.setLineWidth(0.25);
+            doc.line(M, H - 13, W - M, H - 13);
+            c.font('normal', 7.5, PR.soluk);
+            c.yaz('suRFace 3D · Bu belge elektronik ortamda oluşturulmuştur.', M, H - 8);
+            c.yaz(`Sayfa ${i} / ${n}`, W - M, H - 8, { align: 'right' });
+        }
+        doc.save(dosyaAdi + '.pdf');
+    };
+
+    return c;
+}
+
+function sureYazisi(toplamDakika) {
+    const sa = Math.floor(toplamDakika / 60);
+    const dk = Math.round(toplamDakika % 60);
+    return `${sa} sa ${dk} dk`;
+}
+
 // --- MALİYET RAPORU PDF İNDİRME FONKSİYONU ---
-function indirMaliyetPDF() {
+async function indirMaliyetPDF() {
     const data = sonHesap || hesapla();
     if (!data) return;
 
@@ -1132,175 +1436,62 @@ function indirMaliyetPDF() {
     const musteriAdi = mInput ? mInput.value.trim() : "";
     const maliyetNotu = document.getElementById('maliyetNotu') ? document.getElementById('maliyetNotu').value.trim() : "";
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const c = await pdfBaslat();
+    const simdi = new Date();
+    c.baslik('MALİYET RAPORU', [
+        `Tarih: ${simdi.toLocaleDateString('tr-TR')}`,
+        `Saat: ${simdi.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
+    ]);
 
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text(baskanKarakterDuzelt(`suRFace 3D - DETAYLI MALIYET RAPORU`), 14, 20);
+    const kutular = [];
+    if (musteriAdi !== "") kutular.push({ k: 'Müşteri', v: musteriAdi });
+    kutular.push(
+        { k: 'Ürün', v: data.urunAdi },
+        { k: 'Adet', v: String(data.adet) },
+        { k: 'Süre (ürün başı)', v: `${data.sureSaat} sa ${data.sureDakika} dk` }
+    );
+    c.bilgiKutulari(kutular);
 
-    doc.setFontSize(11);
-    doc.setFont("Helvetica", "normal");
-
-    let currentY = 28;
-    if(musteriAdi !== "") {
-        doc.text(baskanKarakterDuzelt(`Musteri: ${musteriAdi}`), 14, currentY);
-        currentY += 6;
-    }
-
-    doc.text(baskanKarakterDuzelt(`Urun Adi: ${data.urunAdi}`), 14, currentY);
-    currentY += 6;
-    doc.text(baskanKarakterDuzelt(`Adet: ${data.adet}`), 14, currentY);
-    currentY += 6;
-    doc.text(baskanKarakterDuzelt(`Uretim Suresi (Urun Basi): ${data.sureSaat}sa ${data.sureDakika}dk`), 14, currentY);
-    currentY += 6;
-    doc.text(baskanKarakterDuzelt(`Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')}`), 14, currentY);
-
-    let y = currentY + 10;
-    doc.setFont("Helvetica", "bold");
-    doc.text(baskanKarakterDuzelt("Gider Kalemi"), 14, y);
-    doc.text(baskanKarakterDuzelt(`Toplam Tutar [${data.adet} Adet] (TL)`), 140, y);
-    doc.line(14, y + 2, 196, y + 2);
-    y += 8;
-
-    // Filamentler listeleniyor
+    const detay = (ham, fark) => ({ tip: 'detay', h: ['Ham hesaplanan / yuvarlama farkı', `${ondalik2(ham)} / +${ondalik2(fark)}`] });
+    const satirlar = [];
     data.secilenFilamentler.forEach(f => {
-        doc.setFont("Helvetica", "bold");
-        doc.text(baskanKarakterDuzelt(`Malzeme Net [${f.renk}] (${(f.tekGram * data.adet).toFixed(1)}g)`), 14, y);
-        doc.text(`${f.safMaliyetToplamYuv}`, 140, y);
-        y += 5;
-
-        doc.setFont("Helvetica", "oblique");
-        doc.setFontSize(9);
-        doc.setTextColor(110, 110, 110);
-        doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-        doc.text(`${f.safMaliyetToplamHam.toFixed(2)} / +${f.safMaliyetFarkToplam.toFixed(2)}`, 140, y);
-        y += 6;
-
-        doc.setFontSize(11);
-        doc.setTextColor(188, 108, 37);
-        doc.setFont("Helvetica", "bold");
-        doc.text(baskanKarakterDuzelt(`   > Fire Payi (${(f.fireGramTek * data.adet).toFixed(1)}g)`), 14, y);
-        doc.text(`${f.fireMaliyetiToplamYuv}`, 140, y);
-        y += 5;
-
-        doc.setFont("Helvetica", "oblique");
-        doc.setFontSize(9);
-        doc.setTextColor(110, 110, 110);
-        doc.text(baskanKarakterDuzelt(`    Ham Hesap / Ust Fark:`), 14, y);
-        doc.text(`${f.fireMaliyetiToplamHam.toFixed(2)} / +${f.fireMaliyetiFarkToplam.toFixed(2)}`, 140, y);
-        y += 6;
-        doc.setFontSize(11);
-        doc.setTextColor(0,0,0);
+        satirlar.push({ tip: 'ana', cizgiYok: true, h: [`Malzeme: ${f.renk} (${gramYaz(f.tekGram * data.adet)})`, para(f.safMaliyetToplamYuv)] });
+        satirlar.push({ ...detay(f.safMaliyetToplamHam, f.safMaliyetFarkToplam), cizgiYok: true });
+        satirlar.push({ tip: 'fire', cizgiYok: true, h: [`Fire payı (${gramYaz(f.fireGramTek * data.adet)})`, para(f.fireMaliyetiToplamYuv)] });
+        satirlar.push(detay(f.fireMaliyetiToplamHam, f.fireMaliyetiFarkToplam));
     });
 
-    // Elektrik
-    doc.setFont("Helvetica", "bold");
-    doc.text(baskanKarakterDuzelt(`Elektrik (${data.watt}W)`), 14, y);
-    doc.text(`${data.elektrikMaliyetiToplamYuv}`, 140, y);
-    y += 5;
-    doc.setFont("Helvetica", "oblique");
-    doc.setFontSize(9);
-    doc.setTextColor(110, 110, 110);
-    doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-    doc.text(`${data.elektrikMaliyetiToplamHam.toFixed(2)} / +${data.elektrikFarkToplam.toFixed(2)}`, 140, y);
-    y += 6;
-    doc.setFontSize(11);
-    doc.setTextColor(0,0,0);
+    const toplamSure = sureYazisi((data.sureSaat * 60 + data.sureDakika) * data.adet);
+    satirlar.push({ tip: 'ana', cizgiYok: true, h: [`Elektrik (${data.watt} W · ${toplamSure})`, para(data.elektrikMaliyetiToplamYuv)] });
+    satirlar.push(detay(data.elektrikMaliyetiToplamHam, data.elektrikFarkToplam));
+    satirlar.push({ tip: 'ana', cizgiYok: true, h: ['Yazıcı Amortisman Payı', para(data.amortismanMaliyetiToplamYuv)] });
+    satirlar.push(detay(data.amortismanMaliyetiToplamHam, data.amortismanFarkToplam));
+    satirlar.push({ tip: 'ana', cizgiYok: true, h: [data.giderTuru, para(data.giderTutariToplamYuv)] });
+    satirlar.push(detay(data.giderTutariToplamHam, data.giderFarkToplam));
+    satirlar.push({ tip: 'toplam', h: ['Net Üretim Gideri (Yuvarlanmış)', para(data.toplamUretimMaliyeti)] });
+    satirlar.push({ tip: 'normal', h: ['Kargo Ücreti', para(data.kargo)] });
+    satirlar.push({ tip: 'genel', cizgiYok: true, h: ['Kargo Dahil Genel Maliyet', para(data.genelMaliyetKargoDahil)] });
 
-    // Amortisman
-    doc.setFont("Helvetica", "bold");
-    doc.text(baskanKarakterDuzelt(`Yazici Amortisman Payi`), 14, y);
-    doc.text(`${data.amortismanMaliyetiToplamYuv}`, 140, y);
-    y += 5;
-    doc.setFont("Helvetica", "oblique");
-    doc.setFontSize(9);
-    doc.setTextColor(110, 110, 110);
-    doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-    doc.text(`${data.amortismanMaliyetiToplamHam.toFixed(2)} / +${data.amortismanFarkToplam.toFixed(2)}`, 140, y);
-    y += 6;
-    doc.setFontSize(11);
-    doc.setTextColor(0,0,0);
+    c.bolum('Gider Kırılımı');
+    c.tablo([
+        { ad: 'Gider Kalemi', w: c.CW - 58 },
+        { ad: `Toplam Tutar (${data.adet} adet)`, w: 58, hiza: 'right' }
+    ], satirlar);
+    c.y += 9;
 
-    // Ekstra Gider
-    doc.setFont("Helvetica", "bold");
-    doc.text(baskanKarakterDuzelt(`${data.giderTuru}`), 14, y);
-    doc.text(`${data.giderTutariToplamYuv}`, 140, y);
-    y += 5;
-    doc.setFont("Helvetica", "oblique");
-    doc.setFontSize(9);
-    doc.setTextColor(110, 110, 110);
-    doc.text(baskanKarakterDuzelt(`   > Ham Hesap / Ust Fark:`), 14, y);
-    doc.text(`${data.giderTutariToplamHam.toFixed(2)} / +${data.giderFarkToplam.toFixed(2)}`, 140, y);
-    y += 6;
-    doc.setFontSize(11);
-    doc.setTextColor(0,0,0);
+    c.bolum('Satış Özeti');
+    c.kpiler([
+        { k: 'Uygulanan Kâr Oranı', v: `%${data.karOrani}` },
+        { k: 'Birim Satış Fiyatı', v: para(data.karliBirimFiyatKdvHaric) },
+        { k: 'Nihai Toplam (KDV Hariç)', v: para(data.toplamSatisKdvHaric), vurgu: true, oran: 1.4 }
+    ]);
 
-    doc.line(14, y, 196, y);
-    y += 6;
+    if (maliyetNotu !== "") c.notlar('Rapor Notu', maliyetNotu);
 
-    // Özet satırları
-    doc.setFont("Helvetica", "bold");
-    doc.text(baskanKarakterDuzelt("Net Uretim Gideri (Yuvarlanmis):"), 14, y);
-    doc.text(`${data.toplamUretimMaliyeti} TL`, 140, y);
-    y += 6;
-
-    doc.setFont("Helvetica", "normal");
-    doc.text(baskanKarakterDuzelt("Kargo Ucreti:"), 14, y);
-    doc.text(`${data.kargo.toFixed(2)} TL`, 140, y);
-    y += 6;
-
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(12, 84, 96);
-    doc.text(baskanKarakterDuzelt("Kargo Dahil Genel Maliyet:"), 14, y);
-    doc.text(`${data.genelMaliyetKargoDahil} TL`, 140, y);
-    y += 8;
-
-    doc.line(14, y, 196, y);
-    y += 8;
-
-    doc.setTextColor(0, 123, 255);
-    doc.text(baskanKarakterDuzelt(`Uygulanan Kar Orani: %${data.karOrani}`), 14, y);
-    y += 6;
-    doc.text(baskanKarakterDuzelt(`Birim Satis Fiyati: ${data.karliBirimFiyatKdvHaric} TL`), 14, y);
-    y += 6;
-    doc.setFontSize(13);
-    doc.text(baskanKarakterDuzelt(`NIHAI TOPLAM SATIS (KDV Haric): ${data.toplamSatisKdvHaric} TL`), 14, y);
-
-    // Çoklu satır desteği ile Rapor Notu yazdırma
-    if (maliyetNotu !== "") {
-        y += 12;
-        doc.setFontSize(11);
-        doc.setFont("Helvetica", "bold");
-        doc.setTextColor(0, 0, 0);
-        doc.text(baskanKarakterDuzelt("Rapor Notu:"), 14, y);
-        y += 6;
-
-        let splitMaliyetNotLines = maliyetNotu.split('\n');
-        splitMaliyetNotLines.forEach(rawLine => {
-            if (rawLine.trim() === "") return;
-            let isRed = rawLine.includes('*');
-            let formattedLine = "* " + rawLine;
-
-            if (isRed) {
-                doc.setTextColor(220, 53, 69);
-                doc.setFont("Helvetica", "bold");
-            } else {
-                doc.setTextColor(100, 100, 100);
-                doc.setFont("Helvetica", "italic");
-            }
-
-            let linesText = doc.splitTextToSize(baskanKarakterDuzelt(formattedLine), 180);
-            linesText.forEach(line => {
-                if (y > 280) { doc.addPage(); y = 20; }
-                doc.text(line, 14, y);
-                y += 5;
-            });
-        });
-    }
-
-    const dosyaAdi = musteriAdi !== "" ? `Maliyet_${musteriAdi.replace(/\s+/g, '_')}_${data.urunAdi.replace(/\s+/g, '_')}` : `Maliyet_Raporu_${data.urunAdi.replace(/\s+/g, '_')}`;
-    doc.save(`${dosyaAdi}.pdf`);
+    const dosyaAdi = musteriAdi !== ""
+        ? `Maliyet_${dosyaAdiTemizle(musteriAdi)}_${dosyaAdiTemizle(data.urunAdi)}`
+        : `Maliyet_Raporu_${dosyaAdiTemizle(data.urunAdi)}`;
+    c.bitir(dosyaAdi);
 }
 
 // --- SİPARİŞ KAYDET & STOKTAN DÜŞÜŞ ---
@@ -1529,113 +1720,65 @@ function teklifOlustur() {
     document.getElementById('teklifGosterim').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function indirPDF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+async function indirPDF() {
+    if (faturayaEklenenSiparisler.length === 0) return alert("Önce teklif önizlemesini oluşturun.");
+
     const sureGosterilsinMi = document.getElementById('tekSureGoster').checked;
     const kdvUygula = document.getElementById('tekKdvUygula').checked;
     const teklifNotu = document.getElementById('teklifNotu').value.trim();
+    const musteri = document.getElementById('outMusteri').innerText;
+    const sayi = id => parseFloat(document.getElementById(id).innerText) || 0;
 
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("FIYAT TEKLIF FORMU", 14, 20);
+    const c = await pdfBaslat();
+    const simdi = new Date();
+    const iki = n => String(n).padStart(2, '0');
+    const teklifNo = `TKL-${simdi.getFullYear()}${iki(simdi.getMonth() + 1)}${iki(simdi.getDate())}-${iki(simdi.getHours())}${iki(simdi.getMinutes())}`;
 
-    doc.setFontSize(11);
-    doc.setFont("Helvetica", "normal");
-    doc.text(baskanKarakterDuzelt(`Firma / Marka: suRFace 3D`), 14, 26);
-    doc.text(baskanKarakterDuzelt(`Musteri / Firma: ${document.getElementById('outMusteri').innerText}`), 14, 32);
-    doc.text(baskanKarakterDuzelt(`Gecerlilik Suresi: ${document.getElementById('outSure').innerText}`), 14, 38);
-    doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 44);
+    c.baslik('FİYAT TEKLİFİ', [`Teklif No: ${teklifNo}`, `Tarih: ${simdi.toLocaleDateString('tr-TR')}`]);
+    c.bilgiKutulari([
+        { k: 'Müşteri / Firma', v: musteri },
+        { k: 'Geçerlilik Süresi', v: document.getElementById('outSure').innerText },
+        { k: 'Kalem Sayısı', v: String(faturayaEklenenSiparisler.length) }
+    ]);
 
-    let y = 55;
-    doc.setFont("Helvetica", "bold");
-    doc.text("Urun Adi", 14, y);
-    doc.text("Adet", 110, y);
-    doc.text("Birim (TL)", 140, y);
-    doc.text("Toplam (TL)", 170, y);
-    doc.line(14, y + 2, 196, y + 2);
+    c.bolum('Teklif Kalemleri');
+    c.tablo([
+        { ad: 'Ürün / Hizmet', w: c.CW - 86 },
+        { ad: 'Adet', w: 18, hiza: 'right', normal: true },
+        { ad: 'Birim Fiyat', w: 34, hiza: 'right', normal: true },
+        { ad: 'Toplam', w: 34, hiza: 'right' }
+    ], faturayaEklenenSiparisler.map(item => ({
+        tip: 'urun',
+        h: [item.urunAdi, String(item.adet), para(Math.ceil(item.fiyat / item.adet)), para(Math.ceil(item.fiyat))],
+        alt: sureGosterilsinMi ? `Bu ürünün ${item.sureSaat || 0} saat ${item.sureDakika || 0} dakika üretim süreci vardır.` : null
+    })));
+    c.y += 6;
 
-    y += 8;
-    doc.setFont("Helvetica", "normal");
-    faturayaEklenenSiparisler.forEach(item => {
-        const urunFiyati = item.fiyat;
-        doc.setFont("Helvetica", "bold");
-        doc.text(baskanKarakterDuzelt(item.urunAdi.substring(0, 45)), 14, y);
-        doc.setFont("Helvetica", "normal");
-
-        doc.text(item.adet.toString(), 110, y);
-        doc.text(Math.ceil(urunFiyati / item.adet).toString(), 140, y);
-        doc.text(Math.ceil(urunFiyati).toString(), 170, y);
-        y += 6;
-
-        if(sureGosterilsinMi) {
-            y += 2;
-            doc.setFont("Helvetica", "oblique");
-            doc.setFontSize(12);
-            doc.setTextColor(40, 167, 69);
-            doc.text(baskanKarakterDuzelt(`* Bu urunun ${item.sureSaat || 0} saat ${item.sureDakika || 0} dakika uretim sureci vardir.`), 16, y);
-            doc.setFontSize(11);
-            doc.setFont("Helvetica", "normal");
-            doc.setTextColor(0, 0, 0);
-            y += 6;
-        }
-        y += 2;
-    });
-    doc.line(14, y, 196, y);
-    y += 8;
-
-    doc.text(`Ara Toplam:`, 120, y);
-    doc.text(`${document.getElementById('outAra').innerText} TL`, 170, y);
-    y += 6;
-    doc.text(baskanKarakterDuzelt(`Iskonto (%${document.getElementById('outIskontoOran').innerText}):`), 120, y);
-    doc.text(`-${document.getElementById('outIskontoTutar').innerText} TL`, 170, y);
-    y += 6;
+    const toplamSatirlari = [
+        { k: 'Ara Toplam', v: para(sayi('outAra')) },
+        { k: `İskonto (%${document.getElementById('outIskontoOran').innerText})`, v: '-' + para(sayi('outIskontoTutar')), renk: PR.kirmizi }
+    ];
     if (kdvUygula) {
-        doc.text(`KDV (%${document.getElementById('outKdvOran').innerText}):`, 120, y);
-        doc.text(`+${document.getElementById('outKdvTutar').innerText} TL`, 170, y);
-        y += 8;
+        toplamSatirlari.push({ k: `KDV (%${document.getElementById('outKdvOran').innerText})`, v: '+' + para(sayi('outKdvTutar')) });
     }
+    c.toplamlar(toplamSatirlari, { k: 'GENEL TOPLAM', v: para(sayi('outGenel')) }, kdvUygula ? 'KDV dahildir.' : 'Fiyatlara KDV dahil değildir.');
 
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text(`GENEL TOPLAM:`, 120, y);
-    doc.text(`${document.getElementById('outGenel').innerText} TL`, 170, y);
+    if (teklifNotu !== "") c.notlar('Notlar', teklifNotu);
 
-    // Çoklu satır desteği ile Teklif Notu PDF'e ekleniyor
-    if (teklifNotu !== "") {
-        y += 12;
-        doc.setFontSize(11);
-        doc.setFont("Helvetica", "bold");
-        doc.setTextColor(0, 0, 0);
-        doc.text(baskanKarakterDuzelt("Not:"), 14, y);
-        y += 6;
+    // Onay alanı
+    c.yerAc(32);
+    c.y += 4;
+    const kutuW = (c.CW - 8) / 2;
+    [['suRFace 3D', 'Yetkili İmza'], ['Müşteri Onayı', 'Kaşe / İmza']].forEach(([baslik, alt], i) => {
+        const x = c.M + i * (kutuW + 8);
+        c.doc.setDrawColor(...PR.cizgi); c.doc.setLineWidth(0.25);
+        c.doc.roundedRect(x, c.y, kutuW, 24, 2, 2, 'S');
+        c.font('bold', 8.5, PR.yazi); c.yaz(baslik, x + 4, c.y + 6);
+        c.font('normal', 7.5, PR.soluk); c.yaz(alt, x + 4, c.y + 20.5);
+    });
+    c.y += 28;
 
-        let splitTeklifNotLines = teklifNotu.split('\n');
-        splitTeklifNotLines.forEach(rawLine => {
-            if (rawLine.trim() === "") return;
-            let isRed = rawLine.includes('*');
-            let formattedLine = "* " + rawLine;
-
-            if (isRed) {
-                doc.setTextColor(220, 53, 69);
-                doc.setFont("Helvetica", "bold");
-            } else {
-                doc.setTextColor(100, 100, 100);
-                doc.setFont("Helvetica", "italic");
-            }
-
-            let linesText = doc.splitTextToSize(baskanKarakterDuzelt(formattedLine), 180);
-            linesText.forEach(line => {
-                if (y > 280) { doc.addPage(); y = 20; }
-                doc.text(line, 14, y);
-                y += 5;
-            });
-        });
-        doc.setTextColor(0, 0, 0);
-        doc.setFont("Helvetica", "normal");
-    }
-
-    doc.save("suRFace_3D_Fiyat_Teklif_Formu.pdf");
+    c.bitir(`suRFace_3D_Teklif_${dosyaAdiTemizle(musteri) || 'Musteri'}_${teklifNo}`);
 }
 
 function deleteOrder(id){
